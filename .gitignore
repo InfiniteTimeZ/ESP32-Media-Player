@@ -1,0 +1,32 @@
+.pio/
+.pio-core/
+.tooling/
+.vscode/
+
+*.log
+.DS_Store
+Thumbs.db
+firmware/src/project.info
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+
+# Build output
+build/
+dist/
+*.exe
+
+# IDE / OS
+.vscode/
+*.code-workspace
+*.lnk
+
+# Local config/secrets
+config.json

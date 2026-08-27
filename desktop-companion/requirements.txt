@@ -1,0 +1,7 @@
+comtypes==1.4.16
+Pillow==12.3.0
+pycaw==20251023
+pypresence==4.6.2
+pyserial==3.5
+pystray==0.19.5
+winsdk==1.0.0b10
