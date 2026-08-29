@@ -27,26 +27,26 @@ extern lv_obj_t* ui_PlayPauseButton3;
 extern bool is_system_muted;
 extern void update_mute_visuals();
 
-bool is_downloading_avatar = false;
 
 extern LGFX gfx;
 static LGFX_Sprite avatar_sprite(&gfx);
 
-// TRAP REMOVED: No more discarding logic!
-enum SerialState { WAITING_FOR_TYPE, READING_JSON, READING_IMAGE_LENGTH, READING_IMAGE_DATA, READING_DISCORD, READING_USER_JSON, READING_AVATAR_HEADER, READING_VOICE_EVENT, READING_CHANNEL_NAME }; 
-SerialState serial_state = WAITING_FOR_TYPE;
+
+#define PACKET_MAGIC_1 0xA5
+#define PACKET_MAGIC_2 0x5A
+#define MAX_IMAGE_PAYLOAD 60000
+#define MAX_PACKET_PAYLOAD (MAX_IMAGE_PAYLOAD + 1)
+
+enum SerialState {
+  FIND_MAGIC_1, 
+  FIND_MAGIC_2, 
+  READ_PACKET_TYPE, 
+  READ_PACKET_LENGTH, 
+  READ_PACKET_PAYLOAD
+}; 
+
+SerialState serial_state = FIND_MAGIC_1;
  
-String json_buffer = "";
-String discord_buffer = "";
-String discord_user_buffer = "";
-String discord_voice_buffer = "";
-String discord_channel_name_buffer = "";
-uint8_t current_avatar_index = 0;
-uint8_t image_length_bytes[4];
-int image_length_bytes_read = 0;
-uint32_t expected_image_length = 0;
-static uint8_t* shared_image_buffer = nullptr;
-int image_bytes_read = 0;
 static uint32_t last_byte_time = 0;
 
 extern bool user_is_seeking;
@@ -59,19 +59,147 @@ static int dsc_index = 0;
 static LGFX_Sprite art_sprite(&gfx);
 static bool sprite_initialized = false;
 
+static uint32_t discarded_bytes = 0;
+static uint8_t packet_type = 0;
+static uint8_t packet_length_bytes[4];
+static uint8_t packet_length_index = 0;
+static uint32_t expected_payload_length = 0;
+static uint32_t payload_bytes_read = 0;
+static uint8_t* shared_packet_buffer = nullptr;
+
+void process_json_message(String &json_str);
+void process_voice_users_json(String &discord_user_buffer);
+void process_avatar_message(uint8_t index, const uint8_t* jpeg_data, size_t jpeg_len);
+void process_image_message(uint8_t* jpeg_data, uint32_t length);
+
+
+static String payload_to_string(const uint8_t* payload, uint32_t length){
+  String result;
+  result.reserve(length);
+
+  for(uint32_t i = 0; i < length; i++){
+    result += (char)payload[i];
+  }
+
+  return result;
+}
+
+static void process_discord_state_packet(const uint8_t* payload, uint32_t length){
+  if (length != 2){
+    Serial.printf("Invalid Discord state packet length: %lu\n", (unsigned long)length);
+    return;
+  }
+  
+  bool is_muted =  payload[0] != 0;
+  bool is_deafened = payload[1] != 0;
+
+  if (is_muted){
+    lv_obj_add_state(ui_MuteButton, LV_STATE_CHECKED);
+    lv_obj_add_state(ui_MuteButton2, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(ui_MuteButton, LV_STATE_CHECKED);
+    lv_obj_clear_state(ui_MuteButton2, LV_STATE_CHECKED);
+  }
+  
+  if (is_deafened){
+
+   lv_obj_add_state(ui_DeafenButton, LV_STATE_CHECKED);
+    lv_obj_add_state(ui_DeafenButton2, LV_STATE_CHECKED);
+  } else {
+    lv_obj_clear_state(ui_DeafenButton, LV_STATE_CHECKED);
+    lv_obj_clear_state(ui_DeafenButton2, LV_STATE_CHECKED);
+  }
+
+}
+
+static bool is_valid_packet_type(uint8_t type){
+  switch (type){
+    case 'R':
+    case 'T':
+    case 'I':
+    case 'U':
+    case 'A':
+    case 'D':
+    case 'N':
+      return true;
+    
+    default:
+      return false;
+  }
+}
+
+static void process_packet(uint8_t type, const uint8_t* payload, uint32_t length){
+  switch(type){
+    case 'R':
+      if (length ==0){
+        Serial.println("ESP32_READY");
+      }
+      break;
+
+    case 'T': {
+      String json = payload_to_string(payload, length);
+      process_json_message(json);
+      break;
+    }
+
+    case 'I': {
+      if(length == 0 || length > MAX_IMAGE_PAYLOAD){
+        Serial.printf("Invalid album length: %lu\n", (unsigned long)length);
+        return;
+      }
+
+      process_image_message((uint8_t*)payload, length);
+      break;
+    }
+
+    case 'U': {
+      String user_json = payload_to_string(payload, length);
+      process_voice_users_json(user_json);
+      break;
+    }
+
+    case 'A': {
+      if(length < 2){
+        Serial.println("Invalid avatar packet");
+        return;
+      }
+
+      uint8_t user_index = payload[0];
+      const uint8_t* jpeg_data = &payload[1];
+      uint32_t jpeg_length = length - 1;
+
+      if(jpeg_length > MAX_IMAGE_PAYLOAD){
+        Serial.println("Avatar image exceeds maximum size");
+        return;
+      }
+
+      process_avatar_message(user_index, jpeg_data, jpeg_length);
+      break;
+    }
+
+    case 'D':
+      process_discord_state_packet(payload, length);
+      break;
+
+    case 'N': {
+      String channel_name = payload_to_string(payload, length);
+      lv_label_set_text(ui_Voice_Chat_Name, channel_name.c_str());
+      break;
+    }
+
+    default:
+      Serial.printf("Unknown packet type: 0x%02X\n", type);
+      break;
+  }
+}
+
 static void reset_serial_parser(){
-  serial_state = WAITING_FOR_TYPE;
+  serial_state = FIND_MAGIC_1;
 
-  json_buffer = "";
-  discord_buffer = "";
-  discord_user_buffer = "";
-  discord_voice_buffer = "";
-  discord_channel_name_buffer = "";
-  image_length_bytes_read = 0;
-  expected_image_length = 0;
-  image_bytes_read = 0;
-
-  is_downloading_avatar = false;
+  packet_type = 0;
+  packet_length_index = 0;
+  expected_payload_length = 0;
+  payload_bytes_read = 0;
 
 }
 static void fade_anim_cb(void * obj, int32_t v) {
@@ -191,10 +319,17 @@ void process_voice_users_json(String &discord_user_buffer){
 }
 
 void init_avatar_buffers() {
-    shared_image_buffer = (uint8_t*)heap_caps_malloc(MAX_IMAGE_PAYLOAD, MALLOC_CAP_SPIRAM);
+    shared_packet_buffer = (uint8_t*)heap_caps_malloc(MAX_PACKET_PAYLOAD, MALLOC_CAP_SPIRAM);
+
+    if (shared_packet_buffer == nullptr){
+      Serial.println("Fialed to allocated serial packet buffer");
+    }
+
     for (int i = 0; i < MAX_DISCORD_USERS; i++) {
         avatar_pixel_buffers[i] = (uint16_t*)heap_caps_malloc(AVATAR_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+
         if (avatar_pixel_buffers[i] == nullptr) continue;
+
         avatar_img_dsc[i].header.magic = LV_IMAGE_HEADER_MAGIC;
         avatar_img_dsc[i].header.flags = 0;
         avatar_img_dsc[i].header.stride = AVATAR_WIDTH * 2;
@@ -216,7 +351,10 @@ void process_avatar_message(uint8_t index, const uint8_t* jpeg_data, size_t jpeg
     avatar_sprite_initialized = true;
   }
 
-  avatar_sprite.drawJpg(jpeg_data, jpeg_len,0,0);
+  if (!avatar_sprite.drawJpg(jpeg_data, jpeg_len,0,0)){
+    Serial.printf("Avatar JPEG decode failed: %Lu bytes\n", (unsigned long)jpeg_len);
+  }
+
   uint16_t *sprite_ptr = (uint16_t*)avatar_sprite.getBuffer();
   for (int i =0; i < AVATAR_HEIGHT * AVATAR_WIDTH; i++){
     uint16_t pixel = sprite_ptr[i];
@@ -245,7 +383,10 @@ void process_image_message(uint8_t *jpeg_data, uint32_t length) {
     sprite_initialized = true;
   }
 
-  if (!art_sprite.drawJpg(jpeg_data, length, 0, 0)) return; 
+  if (!art_sprite.drawJpg(jpeg_data, length, 0, 0)){
+    Serial.printf("Album JPEG decode failed: %lu bytes\n", (unsigned long)length);
+    return;
+  } 
 
   uint16_t* pixels = (uint16_t*)art_sprite.getBuffer();
   for (int i = 0; i < 250 * 250; i++) {
@@ -277,137 +418,101 @@ void process_image_message(uint8_t *jpeg_data, uint32_t length) {
 }
 
 void handle_serial_input() {
-  if (serial_state != WAITING_FOR_TYPE && (millis() - last_byte_time > 1500)) {
+  if (serial_state != FIND_MAGIC_1 && (millis() - last_byte_time > 1500)) {
     Serial.println("Serial stall detected! Stream desynced. Flushing trash...");
     reset_serial_parser();
-    while (Serial.available()) { Serial.read(); }
   }
 
   while (Serial.available() > 0) {
     last_byte_time = millis();
 
-    if (serial_state == READING_IMAGE_DATA) {
-      int available_bytes = Serial.available();
-      int remaining_bytes = expected_image_length - image_bytes_read;
-      int bytes_to_read = min(available_bytes, remaining_bytes);
+    if (serial_state == READ_PACKET_PAYLOAD) {
+      uint32_t remaining = expected_payload_length - payload_bytes_read;
+      uint32_t available = Serial.available();
+      uint32_t bytes_to_read = min(remaining, available);
       
-      int bytes_read = Serial.readBytes((char*)&shared_image_buffer[image_bytes_read], bytes_to_read);
-      image_bytes_read += bytes_read;
-
-      if (image_bytes_read >= expected_image_length) {
-        if (is_downloading_avatar) {
-            process_avatar_message(current_avatar_index, shared_image_buffer, expected_image_length);
-        } else {
-            process_image_message(shared_image_buffer, expected_image_length);
-        }
-        serial_state = WAITING_FOR_TYPE;
+      if (bytes_to_read > 0){
+        int bytes_read = Serial.readBytes((char*)&shared_packet_buffer[payload_bytes_read], bytes_to_read);
+        payload_bytes_read += bytes_read;
       }
-      continue; 
-    }
 
+      if (payload_bytes_read >= expected_payload_length){
+        process_packet(packet_type, shared_packet_buffer, expected_payload_length);
+        reset_serial_parser();
+      }
+      continue;
+    }
+    
     uint8_t byte = Serial.read();
 
     switch (serial_state) {
-      case WAITING_FOR_TYPE:
-        if (byte == '?') { Serial.println("ESP32_READY");}
-        else if (byte == 'T') { json_buffer = ""; serial_state = READING_JSON; } 
-        else if (byte == 'I') { is_downloading_avatar = false; image_length_bytes_read = 0; serial_state = READING_IMAGE_LENGTH; } 
-        else if (byte == 'D') { discord_buffer = ""; serial_state = READING_DISCORD; }
-        else if (byte == 'U'){ discord_user_buffer = ""; serial_state = READING_USER_JSON; } 
-        else if (byte == 'A'){ is_downloading_avatar = true; serial_state = READING_AVATAR_HEADER; } 
-        else if (byte == 'V'){ discord_voice_buffer = ""; serial_state = READING_VOICE_EVENT; }
-        else if (byte == 'N'){ discord_channel_name_buffer = ""; serial_state = READING_CHANNEL_NAME; }
+      case FIND_MAGIC_1:
+        if(byte == PACKET_MAGIC_1){
+          if(discarded_bytes > 0){
+            Serial.printf("Serial resync after discarding %Lu bytes\n", (unsigned long)discarded_bytes);
+            discarded_bytes = 0;
+          }
+
+          serial_state = FIND_MAGIC_2;
+
+        }else{
+          discarded_bytes++;
+        }
+        break;
+      
+      case FIND_MAGIC_2:
+        if(byte == PACKET_MAGIC_2){
+          serial_state = READ_PACKET_TYPE;
+        } 
+        else if(byte == PACKET_MAGIC_1){
+          serial_state = FIND_MAGIC_2;
+        }
+        else{
+          serial_state = FIND_MAGIC_1;
+        }
         break;
 
-      case READING_JSON:
-        if (byte == '\n') { process_json_message(json_buffer); serial_state = WAITING_FOR_TYPE; } 
-        else { json_buffer += (char)byte; }
-        break;
+      case READ_PACKET_TYPE:
+        if (!is_valid_packet_type(byte)){
+          Serial.printf("Invalid packet type: 0x%02x\n", byte);
+          reset_serial_parser();
+          break;
+         }
 
-      case READING_IMAGE_LENGTH:
-        image_length_bytes[image_length_bytes_read++] = byte;
-        if (image_length_bytes_read == 4) {
-          expected_image_length = image_length_bytes[0] | (image_length_bytes[1] << 8) | (image_length_bytes[2] << 16) | (image_length_bytes[3] << 24);
-          
-          if (expected_image_length > 0 && expected_image_length <= MAX_IMAGE_PAYLOAD) {
-              image_bytes_read = 0;
-              serial_state = READING_IMAGE_DATA;
-          } else {
-              // Smooth abort without locking the ESP32!
-              Serial.printf("Corrupt stream detected! Invalid image length: %lu bytes (%s)\n", (unsigned long)expected_image_length, is_downloading_avatar ? "avatar" : "album");
-              reset_serial_parser();
+         packet_type = byte;
+         packet_length_index = 0;
+         expected_payload_length = 0;
+         serial_state = READ_PACKET_LENGTH;
+
+         break;
+
+      case READ_PACKET_LENGTH:
+        packet_length_bytes[ packet_length_index++] = byte;
+
+        if(packet_length_index == 4){
+          expected_payload_length = (uint32_t)packet_length_bytes[0] | ((uint32_t)packet_length_bytes[1] << 8) | ((uint32_t)packet_length_bytes[2] << 16) | ((uint32_t)packet_length_bytes[3] << 24);
+
+          if (expected_payload_length > MAX_PACKET_PAYLOAD){
+            Serial.printf("Invalid packet length: %lu\n", (unsigned long)expected_payload_length);
+            reset_serial_parser();
+            break;
+          }
+
+          payload_bytes_read = 0;
+
+          if (expected_payload_length == 0){
+            process_packet(packet_type, shared_packet_buffer, 0);
+            reset_serial_parser();
+          }
+          else{
+            serial_state = READ_PACKET_PAYLOAD;
           }
         }
         break;
 
-      case READING_DISCORD:
-        if (byte == '\n') {
-          if (discord_buffer.length() >= 4) {
-              bool is_muted = (discord_buffer[1] == '1');
-              bool is_deafened = (discord_buffer[3] == '1');
-
-              if (is_muted) lv_obj_add_state(ui_MuteButton, LV_STATE_CHECKED), lv_obj_add_state(ui_MuteButton2, LV_STATE_CHECKED);
-              else lv_obj_clear_state(ui_MuteButton, LV_STATE_CHECKED), lv_obj_clear_state(ui_MuteButton2, LV_STATE_CHECKED);;
-
-              if (is_deafened) lv_obj_add_state(ui_DeafenButton, LV_STATE_CHECKED), lv_obj_add_state(ui_DeafenButton2, LV_STATE_CHECKED);
-              else lv_obj_clear_state(ui_DeafenButton, LV_STATE_CHECKED), lv_obj_clear_state(ui_DeafenButton2, LV_STATE_CHECKED);;
-          }
-          serial_state = WAITING_FOR_TYPE;
-        } else {
-          discord_buffer += (char)byte;
-        }
+      case READ_PACKET_PAYLOAD:
         break;
-
-      case READING_USER_JSON:
-        if (byte == '\n') { process_voice_users_json(discord_user_buffer); serial_state = WAITING_FOR_TYPE; } 
-        else{ discord_user_buffer += (char)byte; }
-        break;
-
-      case READING_AVATAR_HEADER:
-        current_avatar_index = byte;
-        image_length_bytes_read = 0;
-        serial_state = READING_IMAGE_LENGTH;
-        break;
-
-      case READING_VOICE_EVENT:
-        if(byte == '\n'){
-          int split_pos = discord_voice_buffer.indexOf(':');
-          int userIndex = discord_voice_buffer.substring(0, split_pos).toInt();
-          int userState = discord_voice_buffer.substring(split_pos + 1).toInt();
-          lv_obj_t *target_card = lv_obj_get_child(ui_DiscordInfo, userIndex);
-          if(target_card != nullptr){
-            lv_obj_set_style_outline_opa(target_card, (userState == 1) ? 255 : 0, LV_PART_MAIN);
-            lv_obj_invalidate(target_card);
-          }
-          serial_state = WAITING_FOR_TYPE;
-        } else {
-          discord_voice_buffer += (char)byte;
-        }
-        break;
-        
-      case READING_CHANNEL_NAME:
-        if (byte == '\n') {
-
-            if (discord_channel_name_buffer.startsWith("CH:")){
-              String channel_name = discord_channel_name_buffer.substring(3);
-               lv_label_set_text(ui_Voice_Chat_Name,  channel_name.c_str());
-            }
-           
-            serial_state = WAITING_FOR_TYPE;
-        } else if(byte >= 0x20 && byte <=0x7E) {
-            discord_channel_name_buffer += (char)byte;
-             
-            if (discord_channel_name_buffer.length() > 100) {
-                discord_channel_name_buffer = "";
-                serial_state = WAITING_FOR_TYPE;
-            }
-        } else{
-          discord_channel_name_buffer = "";
-          serial_state = WAITING_FOR_TYPE;
-        }
-        break;
-
-      case READING_IMAGE_DATA: break;
+       
     }
   }
 }

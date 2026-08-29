@@ -97,7 +97,8 @@ async def main_loop():
         for clean_line in incoming_commands:
             logger.debug("UART received: %s", clean_line)
 
-            if("Serial stall detected" in clean_line) or "Corrupt stream detected" in clean_line:
+            if "Serial stall detected" in clean_line or "Corrupt stream detected" in clean_line  or "Serial packet timeout" in clean_line or "Invalid packet" in clean_line or "JPEG decode failed" in clean_line:
+
                 logger.warning("ESP32 serial parser reported: %s", clean_line)
                 continue
 

@@ -18,6 +18,14 @@ _ready_for_sync = False
 _write_lock = threading.RLock()
 _write_queue = queue.Queue()
 
+_PACKET_MAGIC = b"\xA5\x5A"
+
+def _build_packet(packet_type, payload=b""):
+    if not isinstance(packet_type,bytes) or len(packet_type) != 1:
+        raise ValueError("packet_type must be exactly one byte")
+
+    return (_PACKET_MAGIC + packet_type + struct.pack("<I", len(payload)) + payload)
+
 
 def request_ready():
     serial_connection = None
@@ -29,7 +37,8 @@ def request_ready():
             if (serial_connection is None or not serial_connection.is_open):
                 return False
 
-            serial_connection.write(b"?")
+            packet = _build_packet(b"R")
+            serial_connection.write(packet)
             serial_connection.flush()
             return True
         
@@ -71,14 +80,12 @@ def _serial_writer():
 
                         for i in range(0, len(data), chunk_size):
                             chunk = data[i:i + chunk_size]
-                            connection.write(chunk)
+                            serial_connection.write(chunk)
                             time.sleep(0.005)
 
                         serial_connection.flush()
 
-                        # Large image transfers are followed by a short delay
-                        # so the ESP32 can decode/draw the JPEG before another
-                        # UART packet fills its receive buffer.
+                        #Gives the ESP32 time to decode/draw large images before next packet
                         time.sleep(0.4)
                     else:
                         serial_connection.write(data)
@@ -86,8 +93,8 @@ def _serial_writer():
 
         except (serial.SerialException, OSError) as exc:
             logger.exception("ESP32 serial connection lost: %s", exc)
-            disconnect()
-            return []
+            disconnect(expected_connection=serial_connection)
+            
 
         finally:
             _write_queue.task_done()
@@ -152,12 +159,11 @@ def mark_ready_for_sync():
     _ready_for_sync = is_connected()
 
 def is_ready_for_sync():
-    return is_connected and _ready_for_sync
+    return is_connected() and _ready_for_sync
 
 
 def read_incoming():
     global uart_buffer
-    connection
     if not is_connected():
         return []
     try:
@@ -168,48 +174,54 @@ def read_incoming():
             uart_buffer = lines.pop()
             return [line.strip() for line in lines if line.strip()]
         return []
-    except (serial.SerialException, OSError):
-        logger.exception("Lost ESP32 serial connection while reading")
+    except (serial.SerialException, OSError) as exc:
+        logger.warning("ESP32 serial connection lost: %s", exc)
         disconnect()
         return []
 
 def send_track_info(track_info):
     if not is_ready_for_sync(): 
         return
-    line = "T" + json.dumps(track_info) + "\n"
-    _write_queue.put((False, line.encode('utf-8')))
+    
+    payload = json.dumps(track_info).encode("utf-8")
+    packet = _build_packet(b"T", payload)
+    _write_queue.put((False, packet))
 
 def send_album_art(jpeg_bytes):
     if not is_ready_for_sync(): 
         return
     logger.debug("Queueing album art: %d bytes", len(jpeg_bytes))
-    header = b"I" + struct.pack('<I', len(jpeg_bytes))
-    _write_queue.put((True, header + jpeg_bytes))
+    packet = _build_packet(b"I", jpeg_bytes)
+    _write_queue.put((True, packet))
 
 def send_voice_user_json(user_dict):
     if not is_ready_for_sync(): 
         return
-    line = f"U{json.dumps(user_dict)}\n"
-    _write_queue.put((False, line.encode('utf-8')))
+
+    payload = json.dumps(user_dict).encode("utf-8")
+    packet = _build_packet(b"U", payload)
+    _write_queue.put((False, packet))
 
 def send_avatar_image(index, jpeg_bytes):
     if not is_ready_for_sync(): 
         return
     logger.debug( "Queueing Discord avatar %d: %d bytes", index, len(jpeg_bytes))
-    header = struct.pack('<c B I', b'A', index, len(jpeg_bytes))
-    _write_queue.put((True, header + jpeg_bytes))
+    payload = bytes([index]) + jpeg_bytes
+    packet = _build_packet(b"A", payload)
+    _write_queue.put((True,packet))
 
 def send_discord_state(is_muted, is_deafened):
     if not is_ready_for_sync(): 
         return
-    line = f"D:{int(is_muted)}:{int(is_deafened)}\n"
-    _write_queue.put((False, line.encode('utf-8')))
+    
+    payload = bytes([int(is_muted), int(is_deafened)])
+    packet = _build_packet(b"D", payload)
+    _write_queue.put((False, packet))
 
 def send_voice_channel_name(name):
     if not is_ready_for_sync(): 
         return
 
-    # "CH:" is a channel-name signature so the ESP32 must validate it before
-    # updating the label so random binary bytes cannot masquerade as text
-    line = f"NCH:{name}\n"
-    _write_queue.put((False, line.encode('utf-8')))
+    payload = name.encode("ascii", errors="ignore")
+    packet = _build_packet(b"N", payload)
+    _write_queue.put((False, packet))
