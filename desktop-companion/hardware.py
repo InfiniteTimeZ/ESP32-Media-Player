@@ -18,6 +18,27 @@ _ready_for_sync = False
 _write_lock = threading.RLock()
 _write_queue = queue.Queue()
 
+
+def request_ready():
+    serial_connection = None
+
+    try: 
+        with _write_lock:
+            serial_connection = connection
+
+            if (serial_connection is None or not serial_connection.is_open):
+                return False
+
+            serial_connection.write(b"?")
+            serial_connection.flush()
+            return True
+        
+    except(serial.SerialException,OSError) as exc:
+        logger.warning("Failed to request ESP32  ready state: %s", exc)
+        disconnect(expected_connection=serial_connection)
+        return False
+    
+
 def _clear_write_queue():
     while True:
         try:
@@ -63,9 +84,10 @@ def _serial_writer():
                         serial_connection.write(data)
                         serial_connection.flush()
 
-        except (serial.SerialException, OSError):
-            logger.exception("Serial write failed; disconnecting ESP32")
+        except (serial.SerialException, OSError) as exc:
+            logger.exception("ESP32 serial connection lost: %s", exc)
             disconnect()
+            return []
 
         finally:
             _write_queue.task_done()
@@ -160,6 +182,7 @@ def send_track_info(track_info):
 def send_album_art(jpeg_bytes):
     if not is_ready_for_sync(): 
         return
+    logger.debug("Queueing album art: %d bytes", len(jpeg_bytes))
     header = b"I" + struct.pack('<I', len(jpeg_bytes))
     _write_queue.put((True, header + jpeg_bytes))
 
@@ -172,6 +195,7 @@ def send_voice_user_json(user_dict):
 def send_avatar_image(index, jpeg_bytes):
     if not is_ready_for_sync(): 
         return
+    logger.debug( "Queueing Discord avatar %d: %d bytes", index, len(jpeg_bytes))
     header = struct.pack('<c B I', b'A', index, len(jpeg_bytes))
     _write_queue.put((True, header + jpeg_bytes))
 

@@ -309,7 +309,8 @@ void handle_serial_input() {
 
     switch (serial_state) {
       case WAITING_FOR_TYPE:
-        if (byte == 'T') { json_buffer = ""; serial_state = READING_JSON; } 
+        if (byte == '?') { Serial.println("ESP32_READY");}
+        else if (byte == 'T') { json_buffer = ""; serial_state = READING_JSON; } 
         else if (byte == 'I') { is_downloading_avatar = false; image_length_bytes_read = 0; serial_state = READING_IMAGE_LENGTH; } 
         else if (byte == 'D') { discord_buffer = ""; serial_state = READING_DISCORD; }
         else if (byte == 'U'){ discord_user_buffer = ""; serial_state = READING_USER_JSON; } 
@@ -333,7 +334,7 @@ void handle_serial_input() {
               serial_state = READING_IMAGE_DATA;
           } else {
               // Smooth abort without locking the ESP32!
-              Serial.println("Corrupt stream detected! Aborting read.");
+              Serial.printf("Corrupt stream detected! Invalid image length: %lu bytes (%s)\n", (unsigned long)expected_image_length, is_downloading_avatar ? "avatar" : "album");
               reset_serial_parser();
           }
         }

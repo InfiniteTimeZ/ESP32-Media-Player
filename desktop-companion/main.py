@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def configure_logging():
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -55,12 +55,20 @@ async def main_loop():
             if hardware.connect():
                 logger.info("Serial connected; waiting for ESP32 ready signal")
                 ready = False
-                deadline = time.time() + 8  
-                while time.time() < deadline:
-                    lines = hardware.read_incoming()
+                deadline = time.monotonic() + 8  
+                next_probe = 0
+                while time.monotonic() < deadline:
+                    now = time.monotonic()
                     
-                    # The ready marker may arrive alongside other UART text, so match it
-                    # anywhere within each completed line rather than requiring equality.
+                    #Retry slowly enough that an interrupted parser has time to reach
+                    # its 1.5 second stall recovery before next probe
+                    if now >= next_probe:
+                        hardware.request_ready()
+                        logger.info("Sent ESP32 readiness probe")
+                        next_probe = now + 2.0
+
+                    lines = hardware.read_incoming()
+
                     if any("ESP32_READY" in line for line in lines):
                         logger.info("ESP32 ready signal received")
                         ready = True
@@ -69,7 +77,11 @@ async def main_loop():
                     await asyncio.sleep(0.1)
                 
                 if not ready:
-                   logger.warning("ESP32 ready signal was not received before timeout; continuing anyway")
+                   logger.warning("ESP32 ready signal was not received before timeout; reconnecting")
+                   hardware.disconnect()
+                   await asyncio.sleep(1)
+                   continue
+
                 hardware.mark_ready_for_sync()
 
                 last_sent_signature = None
