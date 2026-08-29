@@ -17,6 +17,7 @@ import logging
 _RECONCILE_INTERVAL = 1.0
 
 active_channel_id = None
+active_channel_name = ""
 channel_users = {}
 ipc_buffer = bytearray()
 _last_command_time = {}
@@ -74,6 +75,7 @@ def _clear_avatar_bindings():
     _avatar_index_epoch.clear()
 
 def resync_hardware():
+    hardware.send_voice_channel_name( active_channel_name if active_channel_id else "")
     global last_roster_ids
     if not active_channel_id:
         hardware.send_voice_user_json({"count": 0, "width": 0, "height": 0, "users": []})
@@ -285,13 +287,14 @@ def _user_from_state(state):
     }
 
 def _switch_channel(new_channel_id, data):
-    global active_channel_id, channel_users, last_roster_ids
+    global active_channel_id, channel_users, last_roster_ids, active_channel_name
 
     active_channel_id = new_channel_id
     channel_users.clear()
     _clear_avatar_bindings()
 
     if not new_channel_id:
+        active_channel_name = ""
         hardware.send_voice_channel_name("")
         send_channel_users()
         return
@@ -303,11 +306,11 @@ def _switch_channel(new_channel_id, data):
         if uid:
             channel_users[uid] = user
 
-    channel_name = _sanitize_display_text(
+    active_channel_name = _sanitize_display_text(
         data.get("name") if data else None,
         "Voice Channel",
     )
-    hardware.send_voice_channel_name(channel_name)
+    hardware.send_voice_channel_name(active_channel_name)
 
     logger.info(
         "Discord voice channel changed to %s with %d members",
@@ -330,12 +333,12 @@ async def _reconcile(rpc_client):
     async with _rpc_lock:
         try:
             channel_fetch = await rpc_client.get_selected_voice_channel()
-        except Exception as e:
+        except Exception as exc:
             logger.debug("Discord channel fetch failed: %s", exc)
             channel_fetch = None
         try:
             voice_settings = await rpc_client.get_voice_settings()
-        except Exception as e:
+        except Exception as exc:
             logger.debug("Discord voice settings fetch failed: %s", exc)
             voice_settings = None
 

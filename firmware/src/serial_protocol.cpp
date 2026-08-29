@@ -59,6 +59,21 @@ static int dsc_index = 0;
 static LGFX_Sprite art_sprite(&gfx);
 static bool sprite_initialized = false;
 
+static void reset_serial_parser(){
+  serial_state = WAITING_FOR_TYPE;
+
+  json_buffer = "";
+  discord_buffer = "";
+  discord_user_buffer = "";
+  discord_voice_buffer = "";
+  discord_channel_name_buffer = "";
+  image_length_bytes_read = 0;
+  expected_image_length = 0;
+  image_bytes_read = 0;
+
+  is_downloading_avatar = false;
+
+}
 static void fade_anim_cb(void * obj, int32_t v) {
     lv_obj_set_style_opa((lv_obj_t *)obj, v, LV_PART_MAIN);
 }
@@ -264,7 +279,7 @@ void process_image_message(uint8_t *jpeg_data, uint32_t length) {
 void handle_serial_input() {
   if (serial_state != WAITING_FOR_TYPE && (millis() - last_byte_time > 1500)) {
     Serial.println("Serial stall detected! Stream desynced. Flushing trash...");
-    serial_state = WAITING_FOR_TYPE;
+    reset_serial_parser();
     while (Serial.available()) { Serial.read(); }
   }
 
@@ -319,7 +334,7 @@ void handle_serial_input() {
           } else {
               // Smooth abort without locking the ESP32!
               Serial.println("Corrupt stream detected! Aborting read.");
-              serial_state = WAITING_FOR_TYPE; 
+              reset_serial_parser();
           }
         }
         break;
@@ -371,15 +386,23 @@ void handle_serial_input() {
         
       case READING_CHANNEL_NAME:
         if (byte == '\n') {
-            lv_label_set_text(ui_Voice_Chat_Name, discord_channel_name_buffer.c_str());
+
+            if (discord_channel_name_buffer.startsWith("CH:")){
+              String channel_name = discord_channel_name_buffer.substring(3);
+               lv_label_set_text(ui_Voice_Chat_Name,  channel_name.c_str());
+            }
+           
             serial_state = WAITING_FOR_TYPE;
-        } else {
+        } else if(byte >= 0x20 && byte <=0x7E) {
             discord_channel_name_buffer += (char)byte;
              
             if (discord_channel_name_buffer.length() > 100) {
                 discord_channel_name_buffer = "";
                 serial_state = WAITING_FOR_TYPE;
             }
+        } else{
+          discord_channel_name_buffer = "";
+          serial_state = WAITING_FOR_TYPE;
         }
         break;
 

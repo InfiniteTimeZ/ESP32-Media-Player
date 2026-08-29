@@ -39,7 +39,7 @@ async def main_loop():
     last_sent_signature = None
 
     session_manager = await media.MediaManager.request_async()
-    hardware.connect()
+    
 
     discord_rpc = None
     if config.app_config.get("use_discord"):
@@ -65,16 +65,18 @@ async def main_loop():
                         logger.info("ESP32 ready signal received")
                         ready = True
                         break
+                    
                     await asyncio.sleep(0.1)
                 
                 if not ready:
                    logger.warning("ESP32 ready signal was not received before timeout; continuing anyway")
+                hardware.mark_ready_for_sync()
 
                 last_sent_signature = None
                 last_processed_track = None
                 last_resync_time = asyncio.get_event_loop().time()
-                if discord_rpc:
-                    network.resync_hardware()
+                network.resync_hardware()
+
             else:
                 await asyncio.sleep(2)
                 continue
@@ -82,6 +84,10 @@ async def main_loop():
         incoming_commands = hardware.read_incoming()
         for clean_line in incoming_commands:
             logger.debug("UART received: %s", clean_line)
+
+            if("Serial stall detected" in clean_line) or "Corrupt stream detected" in clean_line:
+                logger.warning("ESP32 serial parser reported: %s", clean_line)
+                continue
 
             if clean_line in ["CMD:NEXT", "CMD:PREV", "CMD:TOGGLE"] or clean_line.startswith("CMD:SEEK:"):
                 await media.handle_media_command(session_manager, clean_line)
