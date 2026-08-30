@@ -1,25 +1,18 @@
-import json
-import urllib.request
-import urllib.parse
-from pypresence import AioClient
-import config
+
 import time
-from PIL import Image
-import io
 import asyncio
-import hardware
-import struct
 import re
 import unicodedata
 import logging
 
+import discord_client
+import hardware
 
 _RECONCILE_INTERVAL = 1.0
 
 active_channel_id = None
 active_channel_name = ""
 channel_users = {}
-ipc_buffer = bytearray()
 _last_command_time = {}
 _COMMAND_DEBOUNCE_SECONDS = 0.3
 _active_rpc_client = None
@@ -49,26 +42,7 @@ last_roster_ids = []
 _rpc_lock = asyncio.Lock()
 avatar_send_lock = asyncio.Lock()
 
-def patch_pypresence(rpc):
-    original_on_event = rpc.on_event
 
-    def patched_on_event(data):
-        global ipc_buffer
-        ipc_buffer.extend(data)
-        while True:
-            if len(ipc_buffer) < 8:
-                break
-            opcode, length = struct.unpack('<II', ipc_buffer[:8])
-            if len(ipc_buffer) < 8 + length:
-                break
-            single_packet = ipc_buffer[:8 + length]
-            del ipc_buffer[:8 + length]
-            try:
-                original_on_event(bytes(single_packet))
-            except Exception:
-                logger.exception("Failed to process Discord IPC packet")
-
-    rpc.on_event = patched_on_event
 
 def _clear_avatar_bindings():
     _avatar_bound_at_index.clear()
@@ -85,60 +59,6 @@ def resync_hardware():
     _clear_avatar_bindings()
     send_channel_users()
 
-async def init_discord_rpc():
-    global _active_rpc_client
-    logger.info("Initializing Discord RPC")
-
-    client_id = config.app_config.get("discord_client_id")
-    client_secret = config.app_config.get("discord_client_secret")
-    redirect_uri = config.app_config.get("discord_redirect_uri", "http://127.0.0.1")
-
-    if not client_id or not client_secret:
-        logger.warning("Discord credentials missing; Discord integration disabled")
-        return None
-
-    rpc = AioClient(client_id)
-    _active_rpc_client = rpc
-    patch_pypresence(rpc)
-
-    try:
-        await rpc.start()
-        auth_response = await rpc.authorize(client_id, scopes=['rpc', 'rpc.voice.read', 'rpc.voice.write'])
-        code = auth_response.get('code') or auth_response.get('data', {}).get('code')
-
-        data = urllib.parse.urlencode({
-            'client_id': client_id,
-            'client_secret': client_secret,
-            'grant_type': 'authorization_code',
-            'code': code,
-            'redirect_uri': redirect_uri
-        }).encode('utf-8')
-
-        req = urllib.request.Request('https://discord.com/api/oauth2/token', data=data)
-        req.add_header('Content-Type', 'application/x-www-form-urlencoded')
-        req.add_header('User-Agent', 'ESP32_Hardware_Controller/1.0')
-
-        with urllib.request.urlopen(req) as response:
-            token_data = json.loads(response.read().decode('utf-8'))
-            access_token = token_data['access_token']
-
-        await rpc.authenticate(access_token)
-
-        logger.info("Discord RPC connected")
-        asyncio.create_task(_reconciler_loop(rpc))
-        return rpc
-    except Exception as e:
-        logger.exception("Discord RPC failed to start")
-        return None
-
-async def leave_discord_voice_channel(rpc_client):
-    payload = {
-        "cmd": "SELECT_VOICE_CHANNEL",
-        "args": {"channel_id": None},
-        "nonce": "{:.20f}".format(time.time())
-    }
-    rpc_client.send_data(1, payload)
-    return await rpc_client.read_output()
 
 async def handle_discord_commands(rpc_client, cmd):
     if not rpc_client:
@@ -152,58 +72,42 @@ async def handle_discord_commands(rpc_client, cmd):
     try:
         if cmd == "CMD:TOGGLE_MUTE":
             async with _rpc_lock:
-                voice_data = await rpc_client.get_voice_settings()
-                current_mute = voice_data.get('mute') if 'mute' in voice_data else voice_data.get('data', {}).get('mute', False)
-                current_deaf = voice_data.get('deaf') if 'deaf' in voice_data else voice_data.get('data', {}).get('deaf', False)
+                current_mute, current_deaf = await discord_client.get_voice_state(rpc_client) 
                 new_mute = not current_mute
-                await rpc_client.set_voice_settings(mute=new_mute)
+                await discord_client.set_mute(rpc_client, new_mute)
                 
             hardware.send_discord_state(new_mute,current_deaf)
-            logger.info("Discord mute changed to %s", not current_mute)
+            logger.info("Discord mute changed to %s", new_mute)
 
         elif cmd == "CMD:TOGGLE_DEAFEN":
             async with _rpc_lock:
-                voice_data = await rpc_client.get_voice_settings()
-                current_mute = voice_data.get('mute') if 'mute' in voice_data else voice_data.get('data', {}).get('mute', False)
-                current_deaf = voice_data.get('deaf') if 'deaf' in voice_data else voice_data.get('data', {}).get('deaf', False)
+                current_mute, current_deaf = await discord_client.get_voice_state(rpc_client)
                 new_deaf = not current_deaf
-                await rpc_client.set_voice_settings(deaf=not current_deaf)
+                await discord_client.set_deafen(rpc_client, new_deaf)
 
             hardware.send_discord_state(current_mute, new_deaf)
-            logger.info("Discord deafen changed to %s", not current_deaf)
+            logger.info("Discord deafen changed to %s", new_deaf)
 
         elif cmd == "CMD:LV_CALL":
             async with _rpc_lock:
-                await leave_discord_voice_channel(rpc_client)
+                await discord_client.leave_discord_voice_channel(rpc_client)
             logger.info("Left Discord voice channel")
 
     except Exception as e:
         logger.exception("Discord command failed: %s", cmd)
 
-def download_and_process_avatar(url, target_size):
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
-            raw_bytes = response.read()
+async def init_discord_rpc():
+    global _active_rpc_client
 
-        img = Image.open(io.BytesIO(raw_bytes))
-        background = Image.new("RGB", img.size, (25, 25, 30))
+    rpc = await discord_client.init_discord_rpc()
 
-        if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
-            rgba_image = img.convert('RGBA')
-            background.paste(rgba_image, mask=rgba_image)
-        else:
-            background = img.convert("RGB")
-
-        final_img = background.resize((target_size, target_size))
-
-        out_buffer = io.BytesIO()
-        final_img.save(out_buffer, format="JPEG", quality=85)
-
-        return out_buffer.getvalue()
-    except Exception as exc:
-        logger.warning("Avatar download failed: %s", exc)
+    if rpc is None:
         return None
+
+    _active_rpc_client = rpc
+    asyncio.create_task(_reconciler_loop(rpc))
+
+    return rpc
 
 def _layout_dimensions(user_count):
     if user_count <= 4:
@@ -269,7 +173,7 @@ async def _send_avatar(idx, user_id, avatar_hash, target_size, epoch):
     if jpeg_bytes is None or _cached_jpeg_hash.get(user_id) != avatar_hash:
         await asyncio.sleep(0.5)
         url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png?size=128"
-        jpeg_bytes = await asyncio.to_thread(download_and_process_avatar, url, target_size)
+        jpeg_bytes = await asyncio.to_thread(discord_client.download_and_process_avatar, url, target_size)
         if not jpeg_bytes:
             return
         _cached_jpeg[user_id] = jpeg_bytes
@@ -340,15 +244,15 @@ def _apply_roster(voice_states):
 async def _reconcile(rpc_client):
     async with _rpc_lock:
         try:
-            channel_fetch = await rpc_client.get_selected_voice_channel()
+            channel_fetch = await discord_client.get_selected_voice_channel(rpc_client)
         except Exception as exc:
             logger.debug("Discord channel fetch failed: %s", exc)
             channel_fetch = None
         try:
-            voice_settings = await rpc_client.get_voice_settings()
+            voice_state = await discord_client.get_voice_state(rpc_client)
         except Exception as exc:
             logger.debug("Discord voice settings fetch failed: %s", exc)
-            voice_settings = None
+            voice_state  = None
 
     data = channel_fetch.get("data") if channel_fetch else None
     new_channel_id = data.get("id") if data else None
@@ -358,18 +262,17 @@ async def _reconcile(rpc_client):
     elif new_channel_id:
         _apply_roster(data.get("voice_states", []))
 
-    if voice_settings is not None:
-        mute = voice_settings.get('mute') if 'mute' in voice_settings else voice_settings.get('data', {}).get('mute', False)
-        deaf = voice_settings.get('deaf') if 'deaf' in voice_settings else voice_settings.get('data', {}).get('deaf', False)
-        # Sent every tick rather than only on changes. If an ESP32 button
-        # event is dropped or debounced and its local state drifts from
-        # Discord's actual state, this corrects it on the next reconciliation.
+    if voice_state  is not None:
+        mute, deaf = voice_state
+
+        # Sent every tick to ESP32 stays sync'd
+        # with Discord's state
         hardware.send_discord_state(mute, deaf)
 
 async def _reconciler_loop(rpc_client):
     while _active_rpc_client is rpc_client:
         try:
             await _reconcile(rpc_client)
-        except Exception as e:
+        except Exception:
            logger.exception("Unexpected error in Discord reconciliation loop")
         await asyncio.sleep(_RECONCILE_INTERVAL)
