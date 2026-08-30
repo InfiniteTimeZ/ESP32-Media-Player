@@ -205,13 +205,10 @@ void handleVolumeLogic() {
 /* 6. MAIN APPLICATION ENTRY POINTS */
 void setup() {
     size_t rx_size = Serial.setRxBufferSize(1024 * 40);
-
+    Serial.begin(230400);  
     Serial.setRxFIFOFull(64);
     Serial.onReceiveError(uart_error);
-
     Serial.printf("Serial RX buffer allocated: %u bytes\n", rx_size);
-    
-    Serial.begin(230400);  
     Wire.begin(15, 16);
     delay(50);
 
@@ -306,6 +303,7 @@ void loop() {
     static int lastButtonState = HIGH;
     static uint32_t last_button_click_time = 0;
     static bool pending_single_click = false;
+    constexpr uint32_t DOUBLE_CLICK_TIME = 450;
 
     int currentButtonState = digitalRead(ENC_PIN_D); 
 
@@ -316,25 +314,24 @@ void loop() {
             lastButtonState = currentButtonState;
             
             if (currentButtonState == LOW) { 
-                if (pending_single_click && (millis() - last_button_click_time < 300)) {
-                    Serial.println("CMD:TOGGLE");
+                if (pending_single_click && (millis() - last_button_click_time < DOUBLE_CLICK_TIME)) {
+                    Serial.println("CMD:MUTE");
+                    is_system_muted = !is_system_muted;
+                    update_mute_visuals();
                     pending_single_click = false;
+
                 } else {
-                    pending_single_click = true;
+                     pending_single_click = true;
                 }
-                last_button_click_time = millis();
+                 last_button_click_time = millis();
             }
         }
-    }
+       
+    }  
+    if (pending_single_click && (millis() - last_button_click_time > DOUBLE_CLICK_TIME)) {
+        Serial.println("CMD:TOGGLE");
+        pending_single_click = false;    
 
-    if (pending_single_click && (millis() - last_button_click_time > 300)) {
-        Serial.println("CMD:MUTE");
-        
-        is_system_muted = !is_system_muted;
-        update_mute_visuals();
-        
-        pending_single_click = false;
     }
-    
     delay(1);
 }
