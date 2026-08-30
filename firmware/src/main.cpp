@@ -30,6 +30,11 @@ bool is_system_muted = false;
 
 static const int8_t KNOB_STATES[] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
 
+void uart_error(hardwareSerial_error_t error)
+{
+  Serial.printf("UART ERROR: %d\n", error);
+}
+
 void IRAM_ATTR encoder_isr() {
     encoder_history <<= 2;
     encoder_history |= (digitalRead(ENC_PIN_A) << 1) | digitalRead(ENC_PIN_B);
@@ -199,7 +204,12 @@ void handleVolumeLogic() {
 
 /* 6. MAIN APPLICATION ENTRY POINTS */
 void setup() {
-    Serial.setRxBufferSize(1024 * 40); 
+    size_t rx_size = Serial.setRxBufferSize(1024 * 40);
+
+    Serial.setRxFIFOFull(64);
+    Serial.onReceiveError(uart_error);
+
+    Serial.printf("Serial RX buffer allocated: %u bytes\n", rx_size);
     
     Serial.begin(230400);  
     Wire.begin(15, 16);

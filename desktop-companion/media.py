@@ -6,6 +6,7 @@ import threading
 import unicodedata
 import colorsys
 import logging
+import hashlib
 from datetime import datetime, timezone
 from PIL import Image
 
@@ -18,6 +19,7 @@ current_windows_volume = -1
 current_windows_mute = False
 empty_session_count = 0
 logger = logging.getLogger(__name__)
+last_album_art_digest = None
 
 def get_vibrant_color(img):
     r, g, b = img.resize((1, 1)).getpixel((0, 0))
@@ -149,7 +151,7 @@ def get_live_position(timeline, is_playing):
     return min(estimated_position, duration)
 
 async def get_current_track_info(session_manager, last_track_id):
-    global last_known_color, empty_session_count
+    global last_known_color, empty_session_count, last_album_art_digest
     current_session = session_manager.get_current_session()
     current_time = datetime.now().strftime("%I:%M %p").lstrip("0")
 
@@ -187,22 +189,48 @@ async def get_current_track_info(session_manager, last_track_id):
     new_art = None
     if get_current_track_id != last_track_id:
         album_art = None
+        selected_jpeg = None
+        selected_digest = None
+
+        await asyncio.sleep(0.25)
+
         for attempt in range(5):  
-            if attempt > 0:
-                info = await current_session.try_get_media_properties_async()
-            if info and info.thumbnail:
-                album_art = await get_album_art_image(info.thumbnail)
-                if album_art:
-                    break
-            await asyncio.sleep(0.15)  
+            refreshed_info = await current_session.try_get_media_properties_async()
+            
+            if refreshed_info and refreshed_info.thumbnail:
+                candidate = await get_album_art_image(refreshed_info.thumbnail)
+
+                if candidate:
+                    candidate = resize_album_art(candidate)
+                    candidate_jpeg = image_to_jpeg_bytes(candidate)
+                    candidate_digest = hashlib.sha1(candidate_jpeg).digest()
+
+                    logger.debug("Album candidate: track=%r attempt=%d bytes=%d hash=%s", get_current_track_id, attempt + 1,  len(candidate_jpeg), hashlib.sha1(candidate_jpeg).hexdigest()[:8])
+
+                    if( last_album_art_digest is None or candidate_digest != last_album_art_digest):
+                        album_art = candidate
+                        selected_jpeg = candidate_jpeg
+                        selected_digest = candidate_digest
+                        info = refreshed_info
+                        break
+
+                    album_art = candidate
+                    selected_jpeg = candidate_jpeg
+                    selected_digest = candidate_digest
+ 
+                await asyncio.sleep(0.15)  
 
         if album_art:
-            album_art = resize_album_art(album_art)
             last_known_color = get_vibrant_color(album_art)
-            new_art = image_to_jpeg_bytes(album_art)
+            if selected_digest != last_album_art_digest:
+                new_art = selected_jpeg
+
+            last_album_art_digest = selected_digest
         else:
-             new_art = generate_blank_album_art()
-             last_known_color = [40, 40, 40] 
+            new_art = generate_blank_album_art()
+            last_known_color = [40, 40, 40] 
+            last_album_art_digest = hashlib.sha1(new_art).digest()
+
      
     is_playing = playback_info.playback_status.name == "PLAYING" if playback_info else False
     live_position = get_live_position(timeline, is_playing) if timeline else 0

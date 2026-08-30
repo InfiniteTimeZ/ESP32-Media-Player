@@ -24,6 +24,18 @@ _album_art_token_queued = False
 
 _PACKET_MAGIC = b"\xA5\x5A"
 
+def _write_packet(serial_connection, data):
+    chunk_size = 128
+
+    for i in range(0, len(data), chunk_size):
+        chunk = data[i:i + chunk_size]
+        serial_connection.write(chunk)
+
+        if i + chunk_size < len(data):
+            time.sleep(0.005)
+
+    serial_connection.flush()
+
 def _clear_pending_album_art():
     global _latest_album_art_packet, _album_art_token_queued
 
@@ -98,20 +110,13 @@ def _serial_writer():
             
                 if serial_connection is None or not serial_connection.is_open:
                     continue
-            
+
+                logger.debug( "Sending serial packet: %d bytes, large=%s", len(data), is_large)    
                 if is_large:
-                    chunk_size = 128
-            
-                    for i in range(0, len(data), chunk_size):
-                        chunk = data[i:i + chunk_size]
-                        serial_connection.write(chunk)
-                        time.sleep(0.005) # DO NOT CHANGE SERIAL BUFFER CANNOT HANDLE 128-BYTE CHUNKS ANY FASTER
-            
-                    serial_connection.flush()
+                    _write_packet(serial_connection, data)
                     time.sleep(0.10)
                 else:
-                    serial_connection.write(data)
-                    serial_connection.flush()
+                    _write_packet(serial_connection, data)   
             
         except (serial.SerialException, OSError) as exc:
             logger.warning("ESP32 serial connection lost: %s", exc)

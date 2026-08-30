@@ -11,7 +11,9 @@
 #define AVATAR_WIDTH 75
 #define AVATAR_HEIGHT 75
 #define AVATAR_BUFFER_SIZE (AVATAR_WIDTH * AVATAR_HEIGHT * 2)
-#define MAX_IMAGE_PAYLOAD 60000
+#define ALBUM_WIDTH 250
+#define ALBUM_HEIGHT 250
+#define ALBUM_BUFFER_SIZE (ALBUM_WIDTH * ALBUM_HEIGHT * 2)
 
 static String last_user_names[MAX_DISCORD_USERS];
 static int last_user_count = 0;
@@ -54,6 +56,7 @@ extern uint32_t seek_lockout_timer;
 extern int currentVolume;
 extern uint32_t vol_lockout_timer;
 
+static uint16_t* album_pixel_buffers[2] = { nullptr, nullptr };
 static lv_image_dsc_t received_img_dsc[2];
 static int dsc_index = 0;
 static LGFX_Sprite art_sprite(&gfx);
@@ -320,9 +323,17 @@ void process_voice_users_json(String &discord_user_buffer){
 
 void init_avatar_buffers() {
     shared_packet_buffer = (uint8_t*)heap_caps_malloc(MAX_PACKET_PAYLOAD, MALLOC_CAP_SPIRAM);
-
+    
     if (shared_packet_buffer == nullptr){
-      Serial.println("Fialed to allocated serial packet buffer");
+      Serial.println("Fialed to allocate serial packet buffer");
+    }
+    
+    for (int i = 0; i < 2; i++){
+      album_pixel_buffers[i] = (uint16_t*)heap_caps_malloc(ALBUM_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+
+      if(album_pixel_buffers[i] == nullptr){
+        Serial.printf("Failed to allocate album buffer %d\n", i);
+      }
     }
 
     for (int i = 0; i < MAX_DISCORD_USERS; i++) {
@@ -394,17 +405,29 @@ void process_image_message(uint8_t *jpeg_data, uint32_t length) {
   }
 
   dsc_index = (dsc_index + 1) % 2; 
+
+  if(album_pixel_buffers[dsc_index] == nullptr){
+  Serial.println("Album image buffer unavailable");
+  return;
+  }
+
+  lv_image_cache_drop(&received_img_dsc[dsc_index]);
+
+  memcpy(album_pixel_buffers[dsc_index], art_sprite.getBuffer(), ALBUM_BUFFER_SIZE);
+
+
   received_img_dsc[dsc_index].header.magic = LV_IMAGE_HEADER_MAGIC;
   received_img_dsc[dsc_index].header.cf = LV_COLOR_FORMAT_RGB565;
   received_img_dsc[dsc_index].header.flags = 0;
-  received_img_dsc[dsc_index].header.w = 250;
-  received_img_dsc[dsc_index].header.h = 250;
-  received_img_dsc[dsc_index].header.stride = 250 * 2; 
-  received_img_dsc[dsc_index].data_size = 250 * 250 * 2;
-  received_img_dsc[dsc_index].data = (const uint8_t *)art_sprite.getBuffer();
+  received_img_dsc[dsc_index].header.w = ALBUM_WIDTH;
+  received_img_dsc[dsc_index].header.h = ALBUM_HEIGHT;
+  received_img_dsc[dsc_index].header.stride = ALBUM_WIDTH * 2; 
+  received_img_dsc[dsc_index].data_size = ALBUM_BUFFER_SIZE;
+  received_img_dsc[dsc_index].data = (const uint8_t *)album_pixel_buffers[dsc_index];
 
-  lv_image_cache_drop(&received_img_dsc[dsc_index]);
   lv_image_set_src(ui_SongImage, &received_img_dsc[dsc_index]);
+  lv_obj_invalidate(ui_SongImage);
+  Serial.printf("Album image applied: %lu bytes\n", (unsigned long)length);
 
   lv_obj_set_style_opa(ui_SongImage, 0, LV_PART_MAIN);
   lv_anim_t a;
