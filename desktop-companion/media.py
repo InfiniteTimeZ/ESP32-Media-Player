@@ -20,6 +20,8 @@ current_windows_mute = False
 empty_session_count = 0
 last_album_art_digest = None
 _volume_thread = None
+_ALBUM_ART_ATTEMPTS = 8
+_ALBUM_ART_RETRY_DELAY = 0.15
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +211,7 @@ async def get_current_track_info(session_manager, last_track_id):
 
         await asyncio.sleep(0.25)
 
-        for attempt in range(5):  
+        for attempt in range(_ALBUM_ART_ATTEMPTS):  
             refreshed_info = await current_session.try_get_media_properties_async()
             
             if refreshed_info and refreshed_info.thumbnail:
@@ -233,7 +235,7 @@ async def get_current_track_info(session_manager, last_track_id):
                     selected_jpeg = candidate_jpeg
                     selected_digest = candidate_digest
  
-                await asyncio.sleep(0.15)  
+                await asyncio.sleep(_ALBUM_ART_RETRY_DELAY)  
 
         if album_art:
             last_known_color = get_vibrant_color(album_art)
