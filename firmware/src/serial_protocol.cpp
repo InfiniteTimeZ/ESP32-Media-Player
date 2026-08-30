@@ -266,6 +266,8 @@ void process_json_message(String &json_str) {
 
 static lv_obj_t* create_user_card(int width, int height, const char* name) {
   lv_obj_t *card = lv_obj_create(ui_DiscordInfo);
+  lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+  
   lv_obj_set_width(card, width);
   lv_obj_set_height(card, height);
   lv_obj_set_style_outline_width(card, 2, LV_PART_MAIN);
