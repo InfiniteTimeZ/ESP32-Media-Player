@@ -18,6 +18,69 @@ import media
 is_paused = False
 logger = logging.getLogger(__name__)
 
+async def connect_hardware():
+    if not hardware.connect():
+        await asyncio.sleep(2)
+        return False
+
+    logger.info("Serial connected; waiting for ESP32 ready signal")
+
+    deadline = time.monotonic() + 8
+    next_probe = 0
+
+    while time.monotonic() < deadline:
+        now = time.monotonic()
+                        
+        #Retry slowly enough that an interrupted parser has time to reach
+        # its 1.5 second stall recovery before next probe
+        if now >= next_probe:
+            hardware.request_ready()
+            logger.info("Sent ESP32 readiness probe")
+            next_probe = now + 2.0
+            
+        lines = hardware.read_incoming()
+            
+        if any("ESP32_READY" in line for line in lines):
+            logger.info("ESP32 ready signal received")
+            hardware.mark_ready_for_sync()
+            network.resync_hardware()
+            return True
+
+        await asyncio.sleep(0.1)
+
+    logger.warning("ESP32 ready signal was not received before timeout; reconnecting")
+
+    hardware.disconnect()
+    await asyncio.sleep(1)
+    return False
+
+       
+async def handle_incoming_commands(session_manager, discord_rpc):
+    incoming_commands = hardware.read_incoming()
+    for clean_line in incoming_commands:
+        logger.debug("UART received: %s", clean_line)
+
+        if "Serial stall detected" in clean_line or "Corrupt stream detected" in clean_line  or "Serial packet timeout" in clean_line or "Invalid packet" in clean_line or "JPEG decode failed" in clean_line:
+
+            logger.warning("ESP32 serial parser reported: %s", clean_line)
+            continue
+
+        if clean_line in ["CMD:NEXT", "CMD:PREV", "CMD:TOGGLE"] or clean_line.startswith("CMD:SEEK:"):
+            await media.handle_media_command(session_manager, clean_line)
+
+        elif clean_line == "CMD:MUTE":
+            media.toggle_windows_mute()
+
+        elif clean_line.startswith("CMD:VOL:"):
+            try:
+                volume = int(clean_line.split(":")[2])
+                media.set_windows_volume(volume)
+            except ValueError:
+                logger.warning("Received invalid volume command: %s", clean_line)
+
+        elif clean_line.startswith("CMD:TOGGLE_") or clean_line == "CMD:LV_CALL":
+            asyncio.create_task(network.handle_discord_commands(discord_rpc, clean_line))
+
 
 def configure_logging():
     logging.basicConfig(
@@ -57,71 +120,15 @@ async def main_loop():
             continue
                 
         if not hardware.is_connected():
-            if hardware.connect():
-                logger.info("Serial connected; waiting for ESP32 ready signal")
-                ready = False
-                deadline = time.monotonic() + 8  
-                next_probe = 0
-                while time.monotonic() < deadline:
-                    now = time.monotonic()
-                    
-                    #Retry slowly enough that an interrupted parser has time to reach
-                    # its 1.5 second stall recovery before next probe
-                    if now >= next_probe:
-                        hardware.request_ready()
-                        logger.info("Sent ESP32 readiness probe")
-                        next_probe = now + 2.0
-
-                    lines = hardware.read_incoming()
-
-                    if any("ESP32_READY" in line for line in lines):
-                        logger.info("ESP32 ready signal received")
-                        ready = True
-                        break
-                    
-                    await asyncio.sleep(0.1)
-                
-                if not ready:
-                   logger.warning("ESP32 ready signal was not received before timeout; reconnecting")
-                   hardware.disconnect()
-                   await asyncio.sleep(1)
-                   continue
-
-                hardware.mark_ready_for_sync()
-
-                last_sent_signature = None
-                last_processed_track = None
-                last_resync_time = asyncio.get_event_loop().time()
-                network.resync_hardware()
-
-            else:
-                await asyncio.sleep(2)
+            if not await connect_hardware():
                 continue
+                     
+            last_sent_signature = None
+            last_processed_track = None
+            last_resync_time = asyncio.get_running_loop().time()
 
-        incoming_commands = hardware.read_incoming()
-        for clean_line in incoming_commands:
-            logger.debug("UART received: %s", clean_line)
+        await handle_incoming_commands(session_manager, discord_rpc)
 
-            if "Serial stall detected" in clean_line or "Corrupt stream detected" in clean_line  or "Serial packet timeout" in clean_line or "Invalid packet" in clean_line or "JPEG decode failed" in clean_line:
-
-                logger.warning("ESP32 serial parser reported: %s", clean_line)
-                continue
-
-            if clean_line in ["CMD:NEXT", "CMD:PREV", "CMD:TOGGLE"] or clean_line.startswith("CMD:SEEK:"):
-                await media.handle_media_command(session_manager, clean_line)
-
-            elif clean_line == "CMD:MUTE":
-                media.toggle_windows_mute()
-
-            elif clean_line.startswith("CMD:VOL:"):
-                try:
-                    volume = int(clean_line.split(":")[2])
-                    media.set_windows_volume(volume)
-                except ValueError:
-                    logger.warning("Received invalid volume command: %s", clean_line)
-
-            elif clean_line.startswith("CMD:TOGGLE_") or clean_line == "CMD:LV_CALL":
-                asyncio.create_task(network.handle_discord_commands(discord_rpc, clean_line))
         
         track_info, last_processed_track, new_art = await media.get_current_track_info(session_manager, last_processed_track)
 
