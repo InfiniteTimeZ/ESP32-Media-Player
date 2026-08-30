@@ -201,7 +201,7 @@ def download_and_process_avatar(url, target_size):
         final_img.save(out_buffer, format="JPEG", quality=85)
 
         return out_buffer.getvalue()
-    except Exception as e:
+    except Exception as exc:
         logger.warning("Avatar download failed: %s", exc)
         return None
 
