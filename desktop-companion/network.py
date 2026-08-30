@@ -9,12 +9,7 @@ import discord_client
 import hardware
 
 _RECONCILE_INTERVAL = 1.0
-
-active_channel_id = None
-active_channel_name = ""
-_last_command_time = {}
 _COMMAND_DEBOUNCE_SECONDS = 0.3
-_active_rpc_client = None
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +22,17 @@ class VoiceRosterState:
         self.cached_jpeg = {}
         self.cached_jpeg_hash = {}
 
+class DiscordSyncState:
+    def __init__(self):
+        self.active_channel_id = None
+        self.active_channel_name = ""
+        self.last_command_time = {}
+        self.active_rpc_client = None
+
+
 roster = VoiceRosterState()
+discord_state = DiscordSyncState()
+
 
 def _sanitize_display_text(text, fallback=""):
     """Return text that the ESP32's built-in Montserrat fonts can render."""
@@ -51,8 +56,8 @@ def _clear_avatar_bindings():
     roster.avatar_index_epoch.clear()
 
 def resync_hardware():
-    hardware.send_voice_channel_name( active_channel_name if active_channel_id else "")
-    if not active_channel_id:
+    hardware.send_voice_channel_name( discord_state.active_channel_name if discord_state.active_channel_id else "")
+    if not discord_state.active_channel_id:
         hardware.send_voice_user_json({"count": 0, "width": 0, "height": 0, "users": []})
         _clear_avatar_bindings()
         return
@@ -66,9 +71,9 @@ async def handle_discord_commands(rpc_client, cmd):
         return
 
     now = time.time()
-    if now - _last_command_time.get(cmd, 0) < _COMMAND_DEBOUNCE_SECONDS:
+    if now - discord_state.last_command_time.get(cmd, 0) < _COMMAND_DEBOUNCE_SECONDS:
         return
-    _last_command_time[cmd] = now
+    discord_state.last_command_time[cmd] = now
 
     try:
         if cmd == "CMD:TOGGLE_MUTE":
@@ -98,14 +103,12 @@ async def handle_discord_commands(rpc_client, cmd):
         logger.exception("Discord command failed: %s", cmd)
 
 async def init_discord_rpc():
-    global _active_rpc_client
-
     rpc = await discord_client.init_discord_rpc()
 
     if rpc is None:
         return None
 
-    _active_rpc_client = rpc
+    discord_state.active_rpc_client = rpc
     asyncio.create_task(_reconciler_loop(rpc))
 
     return rpc
@@ -126,7 +129,7 @@ def send_channel_users():
     if user_count == 0:
         if roster.last_roster_ids:
             hardware.send_voice_user_json({"count": 0, "width": 0, "height": 0, "users": []})
-            roster.last_roster_ids = []
+            roster.last_roster_ids.clear()
             _clear_avatar_bindings()
         return 0
 
@@ -198,14 +201,12 @@ def _user_from_state(state):
     }
 
 def _switch_channel(new_channel_id, data):
-    global active_channel_id, active_channel_name
-
-    active_channel_id = new_channel_id
+    discord_state.active_channel_id = new_channel_id
     roster.users.clear()
     _clear_avatar_bindings()
 
     if not new_channel_id:
-        active_channel_name = ""
+        discord_state.active_channel_name = ""
         hardware.send_voice_channel_name("")
         send_channel_users()
         return
@@ -217,11 +218,11 @@ def _switch_channel(new_channel_id, data):
         if uid:
             roster.users[uid] = user
 
-    active_channel_name = _sanitize_display_text(
+    discord_state.active_channel_name = _sanitize_display_text(
         data.get("name") if data else None,
         "Voice Channel",
     )
-    hardware.send_voice_channel_name(active_channel_name)
+    hardware.send_voice_channel_name(discord_state.active_channel_name)
 
     logger.info(
         "Discord voice channel changed to %s with %d members",
@@ -255,7 +256,7 @@ async def _reconcile(rpc_client):
     data = channel_fetch.get("data") if channel_fetch else None
     new_channel_id = data.get("id") if data else None
 
-    if new_channel_id != active_channel_id:
+    if new_channel_id != discord_state.active_channel_id:
         _switch_channel(new_channel_id, data)
     elif new_channel_id:
         _apply_roster(data.get("voice_states", []))
@@ -268,7 +269,7 @@ async def _reconcile(rpc_client):
         hardware.send_discord_state(mute, deaf)
 
 async def _reconciler_loop(rpc_client):
-    while _active_rpc_client is rpc_client:
+    while discord_state.active_rpc_client is rpc_client:
         try:
             await _reconcile(rpc_client)
         except Exception:
