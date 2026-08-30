@@ -237,7 +237,6 @@ void setup() {
     lv_init();
     lv_tick_set_cb(my_tick_get_cb);
 
-    constexpr uint32_t LVGL_BUFFER_LINES = 30; 
     constexpr size_t buffer_size = LCD_H_RES * LVGL_BUFFER_LINES * sizeof(uint16_t);
     
     buf = static_cast<uint8_t *>(heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
