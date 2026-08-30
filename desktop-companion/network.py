@@ -43,14 +43,8 @@ def _sanitize_display_text(text, fallback=""):
 
     return printable_text or fallback
 
-
-
-
-
 _rpc_lock = asyncio.Lock()
 avatar_send_lock = asyncio.Lock()
-
-
 
 def _clear_avatar_bindings():
     roster.avatar_bound_at_index.clear()
@@ -62,7 +56,7 @@ def resync_hardware():
         hardware.send_voice_user_json({"count": 0, "width": 0, "height": 0, "users": []})
         _clear_avatar_bindings()
         return
-    roster.last_roster_ids = []
+    roster.last_roster_ids.clear()
     _clear_avatar_bindings()
     send_channel_users()
 
@@ -100,7 +94,7 @@ async def handle_discord_commands(rpc_client, cmd):
                 await discord_client.leave_discord_voice_channel(rpc_client)
             logger.info("Left Discord voice channel")
 
-    except Exception as e:
+    except Exception:
         logger.exception("Discord command failed: %s", cmd)
 
 async def init_discord_rpc():
@@ -125,10 +119,8 @@ def _layout_dimensions(user_count):
         return 75, 85, 100
 
 def send_channel_users():
-    global user_id_to_index
 
     ordered_ids = list(roster.users.keys())[:15]
-    user_id_to_index = {uid: idx for idx, uid in enumerate(ordered_ids)}
     user_count = len(ordered_ids)
 
     if user_count == 0:
