@@ -111,7 +111,7 @@ void ui_event_MuteButton2(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
-    if(event_code == LV_EVENT_VALUE_CHANGED) {
+    if(event_code == LV_EVENT_CLICKED) {
         toggle_mute(e);
     }
 }
@@ -120,7 +120,7 @@ void ui_event_DeafenButton2(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
-    if(event_code == LV_EVENT_VALUE_CHANGED) {
+    if(event_code == LV_EVENT_CLICKED) {
         toggle_deafen(e);
     }
 }
@@ -429,7 +429,7 @@ void ui_Music_Screen_screen_init(void)
 
     ui_MuteButton2 = lv_imagebutton_create(ui_SongButtons3);
     lv_imagebutton_set_src(ui_MuteButton2, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_micnomutemini_png, NULL);
-    lv_imagebutton_set_src(ui_MuteButton2, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_micnomutemini_png, NULL);
+    lv_imagebutton_set_src(ui_MuteButton2, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_micmutedmini_png, NULL);
     lv_imagebutton_set_src(ui_MuteButton2, LV_IMAGEBUTTON_STATE_CHECKED_PRESSED, NULL, &ui_img_micmutedmini_png, NULL);
     lv_imagebutton_set_src(ui_MuteButton2, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NULL, &ui_img_micmutedmini_png, NULL);
     lv_obj_set_width(ui_MuteButton2, 48);
@@ -437,8 +437,6 @@ void ui_Music_Screen_screen_init(void)
     lv_obj_set_x(ui_MuteButton2, -313);
     lv_obj_set_y(ui_MuteButton2, -96);
     lv_obj_set_align(ui_MuteButton2, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_MuteButton2, LV_OBJ_FLAG_CHECKABLE);     /// Flags
-    lv_obj_remove_flag(ui_MuteButton2, LV_OBJ_FLAG_CLICK_FOCUSABLE);      /// Flags
     lv_obj_set_style_radius(ui_MuteButton2, 10, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(ui_MuteButton2, lv_color_hex(0x832D2D), LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(ui_MuteButton2, 255, LV_PART_MAIN | LV_STATE_CHECKED);
@@ -457,7 +455,7 @@ void ui_Music_Screen_screen_init(void)
 
     ui_DeafenButton2 = lv_imagebutton_create(ui_SongButtons3);
     lv_imagebutton_set_src(ui_DeafenButton2, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_headphonesnodeafenmini_png, NULL);
-    lv_imagebutton_set_src(ui_DeafenButton2, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_headphonesnodeafenmini_png, NULL);
+    lv_imagebutton_set_src(ui_DeafenButton2, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_headphonesdeafenedmini_png, NULL);
     lv_imagebutton_set_src(ui_DeafenButton2, LV_IMAGEBUTTON_STATE_CHECKED_PRESSED, NULL, &ui_img_headphonesdeafenedmini_png,
                            NULL);
     lv_imagebutton_set_src(ui_DeafenButton2, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NULL,
@@ -467,7 +465,6 @@ void ui_Music_Screen_screen_init(void)
     lv_obj_set_x(ui_DeafenButton2, -313);
     lv_obj_set_y(ui_DeafenButton2, -9);
     lv_obj_set_align(ui_DeafenButton2, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_DeafenButton2, LV_OBJ_FLAG_CHECKABLE);     /// Flags
     lv_obj_set_style_radius(ui_DeafenButton2, 10, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(ui_DeafenButton2, lv_color_hex(0x832D2D), LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(ui_DeafenButton2, 255, LV_PART_MAIN | LV_STATE_CHECKED);

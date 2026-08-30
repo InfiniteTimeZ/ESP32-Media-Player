@@ -352,7 +352,7 @@ void process_avatar_message(uint8_t index, const uint8_t* jpeg_data, size_t jpeg
   }
 
   if (!avatar_sprite.drawJpg(jpeg_data, jpeg_len,0,0)){
-    Serial.printf("Avatar JPEG decode failed: %Lu bytes\n", (unsigned long)jpeg_len);
+    Serial.printf("Avatar JPEG decode failed: %lu bytes\n", (unsigned long)jpeg_len);
   }
 
   uint16_t *sprite_ptr = (uint16_t*)avatar_sprite.getBuffer();
@@ -449,7 +449,7 @@ void handle_serial_input() {
       case FIND_MAGIC_1:
         if(byte == PACKET_MAGIC_1){
           if(discarded_bytes > 0){
-            Serial.printf("Serial resync after discarding %Lu bytes\n", (unsigned long)discarded_bytes);
+            Serial.printf("Serial resync after discarding %lu bytes\n", (unsigned long)discarded_bytes);
             discarded_bytes = 0;
           }
 

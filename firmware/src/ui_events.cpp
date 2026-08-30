@@ -87,7 +87,7 @@ void next_song_cb(lv_event_t * e)
 void toggle_mute(lv_event_t * e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    if(code == LV_EVENT_VALUE_CHANGED) {
+    if(code == LV_EVENT_CLICKED) {
         Serial.println("CMD:TOGGLE_MUTE");
     }
 }
@@ -95,7 +95,7 @@ void toggle_mute(lv_event_t * e)
 void toggle_deafen(lv_event_t * e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-    if(code == LV_EVENT_VALUE_CHANGED) {
+    if(code == LV_EVENT_CLICKED) {
         Serial.println("CMD:TOGGLE_DEAFEN");
     }
 }

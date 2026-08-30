@@ -17,8 +17,19 @@ _ready_for_sync = False
 
 _write_lock = threading.RLock()
 _write_queue = queue.Queue()
+_album_art_lock = threading.Lock()
+_album_art_token = object()
+_latest_album_art_packet = None
+_album_art_token_queued = False
 
 _PACKET_MAGIC = b"\xA5\x5A"
+
+def _clear_pending_album_art():
+    global _latest_album_art_packet, _album_art_token_queued
+
+    with _album_art_lock:
+        _latest_album_art_packet = None
+        _album_art_token_queued = False
 
 def _build_packet(packet_type, payload=b""):
     if not isinstance(packet_type,bytes) or len(packet_type) != 1:
@@ -58,6 +69,8 @@ def _clear_write_queue():
 
 
 def _serial_writer():
+    global _latest_album_art_packet, _album_art_token_queued
+
     while True:
         item = _write_queue.get()
         serial_connection = None
@@ -66,36 +79,44 @@ def _serial_writer():
             if item is None:
                 break
 
-            is_large, data = item
+            if item is _album_art_token:
+                with _album_art_lock:
+                    data = _latest_album_art_packet
+                    _latest_album_art_packet = None
+                    _album_art_token_queued = False
 
-            if connection is not None and connection.is_open:
-                with _write_lock:
-                    serial_connection = connection
+                if data is None:
+                    continue
 
-                    if serial_connection is None or not serial_connection.is_open:
-                        continue
+                is_large = True
 
-                    if is_large:
-                        chunk_size = 128
+            else:
+                is_large, data = item
 
-                        for i in range(0, len(data), chunk_size):
-                            chunk = data[i:i + chunk_size]
-                            serial_connection.write(chunk)
-                            time.sleep(0.005)
-
-                        serial_connection.flush()
-
-                        #Gives the ESP32 time to decode/draw large images before next packet
-                        time.sleep(0.4)
-                    else:
-                        serial_connection.write(data)
-                        serial_connection.flush()
-
-        except (serial.SerialException, OSError) as exc:
-            logger.exception("ESP32 serial connection lost: %s", exc)
-            disconnect(expected_connection=serial_connection)
+            with _write_lock:
+                serial_connection = connection
             
-
+                if serial_connection is None or not serial_connection.is_open:
+                    continue
+            
+                if is_large:
+                    chunk_size = 128
+            
+                    for i in range(0, len(data), chunk_size):
+                        chunk = data[i:i + chunk_size]
+                        serial_connection.write(chunk)
+                        time.sleep(0.005) # DO NOT CHANGE SERIAL BUFFER CANNOT HANDLE 128-BYTE CHUNKS ANY FASTER
+            
+                    serial_connection.flush()
+                    time.sleep(0.10)
+                else:
+                    serial_connection.write(data)
+                    serial_connection.flush()
+            
+        except (serial.SerialException, OSError) as exc:
+            logger.warning("ESP32 serial connection lost: %s", exc)
+            disconnect(expected_connection=serial_connection)
+                        
         finally:
             _write_queue.task_done()
 
@@ -124,6 +145,7 @@ def connect():
             _ready_for_sync = False
             uart_buffer = ""
             _clear_write_queue()
+            _clear_pending_album_art()
             connection = serial.Serial(port_name, 230400, timeout=1)
             logger.info("Connected to ESP32 on %s", port_name)
             return True
@@ -140,6 +162,7 @@ def disconnect(expected_connection=None):
 
         _ready_for_sync = False
         _clear_write_queue()
+        _clear_pending_album_art()
 
         if connection:
             try:
@@ -188,11 +211,24 @@ def send_track_info(track_info):
     _write_queue.put((False, packet))
 
 def send_album_art(jpeg_bytes):
-    if not is_ready_for_sync(): 
+    global _latest_album_art_packet, _album_art_token_queued
+
+    if not is_ready_for_sync():
         return
-    logger.debug("Queueing album art: %d bytes", len(jpeg_bytes))
+
     packet = _build_packet(b"I", jpeg_bytes)
-    _write_queue.put((True, packet))
+
+    with _album_art_lock:
+        _latest_album_art_packet = packet
+
+        if _album_art_token_queued:
+            logger.debug("Replaced pending album art: %d bytes", len(jpeg_bytes))
+            return
+
+        _album_art_token_queued = True
+
+    logger.debug("Queueing album art: %d bytes", len(jpeg_bytes))
+    _write_queue.put(_album_art_token)
 
 def send_voice_user_json(user_dict):
     if not is_ready_for_sync(): 

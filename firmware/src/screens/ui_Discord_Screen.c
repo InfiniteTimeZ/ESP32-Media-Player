@@ -68,7 +68,7 @@ void ui_event_MuteButton(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
-    if(event_code == LV_EVENT_VALUE_CHANGED) {
+    if(event_code == LV_EVENT_CLICKED) {
         toggle_mute(e);
     }
 }
@@ -77,7 +77,7 @@ void ui_event_DeafenButton(lv_event_t * e)
 {
     lv_event_code_t event_code = lv_event_get_code(e);
 
-    if(event_code == LV_EVENT_VALUE_CHANGED) {
+    if(event_code == LV_EVENT_CLICKED) {
         toggle_deafen(e);
     }
 }
@@ -210,7 +210,7 @@ void ui_Discord_Screen_screen_init(void)
 
     ui_MuteButton = lv_imagebutton_create(ui_ControlPanel);
     lv_imagebutton_set_src(ui_MuteButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_micnomute_png, NULL);
-    lv_imagebutton_set_src(ui_MuteButton, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_micnomute_png, NULL);
+    lv_imagebutton_set_src(ui_MuteButton, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_micmuted_png, NULL);
     lv_imagebutton_set_src(ui_MuteButton, LV_IMAGEBUTTON_STATE_CHECKED_PRESSED, NULL, &ui_img_micmuted_png, NULL);
     lv_imagebutton_set_src(ui_MuteButton, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NULL, &ui_img_micmuted_png, NULL);
     lv_obj_set_width(ui_MuteButton, 64);
@@ -218,8 +218,6 @@ void ui_Discord_Screen_screen_init(void)
     lv_obj_set_x(ui_MuteButton, -313);
     lv_obj_set_y(ui_MuteButton, -96);
     lv_obj_set_align(ui_MuteButton, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_MuteButton, LV_OBJ_FLAG_CHECKABLE);     /// Flags
-    lv_obj_remove_flag(ui_MuteButton, LV_OBJ_FLAG_CLICK_FOCUSABLE);      /// Flags
     lv_obj_set_style_radius(ui_MuteButton, 10, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(ui_MuteButton, lv_color_hex(0x832D2D), LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(ui_MuteButton, 255, LV_PART_MAIN | LV_STATE_CHECKED);
@@ -238,7 +236,7 @@ void ui_Discord_Screen_screen_init(void)
 
     ui_DeafenButton = lv_imagebutton_create(ui_ControlPanel);
     lv_imagebutton_set_src(ui_DeafenButton, LV_IMAGEBUTTON_STATE_RELEASED, NULL, &ui_img_headphonesnodeafen_png, NULL);
-    lv_imagebutton_set_src(ui_DeafenButton, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_headphonesnodeafen_png, NULL);
+    lv_imagebutton_set_src(ui_DeafenButton, LV_IMAGEBUTTON_STATE_PRESSED, NULL, &ui_img_headphonesdeafened_png, NULL);
     lv_imagebutton_set_src(ui_DeafenButton, LV_IMAGEBUTTON_STATE_CHECKED_PRESSED, NULL, &ui_img_headphonesdeafened_png,
                            NULL);
     lv_imagebutton_set_src(ui_DeafenButton, LV_IMAGEBUTTON_STATE_CHECKED_RELEASED, NULL, &ui_img_headphonesdeafened_png,
@@ -248,7 +246,6 @@ void ui_Discord_Screen_screen_init(void)
     lv_obj_set_x(ui_DeafenButton, -313);
     lv_obj_set_y(ui_DeafenButton, -9);
     lv_obj_set_align(ui_DeafenButton, LV_ALIGN_CENTER);
-    lv_obj_add_flag(ui_DeafenButton, LV_OBJ_FLAG_CHECKABLE);     /// Flags
     lv_obj_set_style_radius(ui_DeafenButton, 10, LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(ui_DeafenButton, lv_color_hex(0x832D2D), LV_PART_MAIN | LV_STATE_CHECKED);
     lv_obj_set_style_bg_opa(ui_DeafenButton, 255, LV_PART_MAIN | LV_STATE_CHECKED);

@@ -154,14 +154,22 @@ async def handle_discord_commands(rpc_client, cmd):
             async with _rpc_lock:
                 voice_data = await rpc_client.get_voice_settings()
                 current_mute = voice_data.get('mute') if 'mute' in voice_data else voice_data.get('data', {}).get('mute', False)
-                await rpc_client.set_voice_settings(mute=not current_mute)
+                current_deaf = voice_data.get('deaf') if 'deaf' in voice_data else voice_data.get('data', {}).get('deaf', False)
+                new_mute = not current_mute
+                await rpc_client.set_voice_settings(mute=new_mute)
+                
+            hardware.send_discord_state(new_mute,current_deaf)
             logger.info("Discord mute changed to %s", not current_mute)
 
         elif cmd == "CMD:TOGGLE_DEAFEN":
             async with _rpc_lock:
                 voice_data = await rpc_client.get_voice_settings()
+                current_mute = voice_data.get('mute') if 'mute' in voice_data else voice_data.get('data', {}).get('mute', False)
                 current_deaf = voice_data.get('deaf') if 'deaf' in voice_data else voice_data.get('data', {}).get('deaf', False)
+                new_deaf = not current_deaf
                 await rpc_client.set_voice_settings(deaf=not current_deaf)
+
+            hardware.send_discord_state(current_mute, new_deaf)
             logger.info("Discord deafen changed to %s", not current_deaf)
 
         elif cmd == "CMD:LV_CALL":
