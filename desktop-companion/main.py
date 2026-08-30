@@ -18,6 +18,39 @@ import media
 is_paused = False
 logger = logging.getLogger(__name__)
 
+class MediaSyncState:
+    def __init__(self):
+        self.last_processed_track = None
+        self.last_resync_time = 0
+        self.last_known_position = 0
+        self.last_sent_signature = None
+
+
+
+async def sync_current_media(session_manager, state):
+    track_info, state.last_processed_track, new_art = (await media.get_current_track_info(session_manager, state.last_processed_track))
+
+    if track_info:
+        sig = track_signature(track_info)
+        now = asyncio.get_running_loop().time()
+
+        current_pos = track_info["position"]
+        is_seek = abs(current_pos - state.last_known_position) > 3.0         
+                
+        if sig != state.last_sent_signature:
+            hardware.send_track_info(track_info)
+            state.last_sent_signature = sig
+            state.last_resync_time = now
+        elif is_seek or (now - state.last_resync_time) > 5: 
+            hardware.send_track_info(track_info)
+            state.last_resync_time = now
+    
+        state.last_known_position = current_pos
+    
+        if new_art: 
+            hardware.send_album_art(new_art)
+
+
 async def connect_hardware():
     if not hardware.connect():
         await asyncio.sleep(2)
@@ -100,12 +133,7 @@ async def main_loop():
     hardware.start()
     media.start()
 
-    
-    last_processed_track = None
-    last_resync_time = 0
-    last_known_position = 0  
-    last_sent_signature = None
-
+    sync_state = MediaSyncState()
     session_manager = await media.MediaManager.request_async()
     
 
@@ -123,35 +151,16 @@ async def main_loop():
             if not await connect_hardware():
                 continue
                      
-            last_sent_signature = None
-            last_processed_track = None
-            last_resync_time = asyncio.get_running_loop().time()
+            sync_state.last_sent_signature = None
+            sync_state.last_processed_track = None
+            sync_state.last_resync_time = asyncio.get_running_loop().time()
 
         await handle_incoming_commands(session_manager, discord_rpc)
+        await sync_current_media(session_manager, sync_state)
 
-        
-        track_info, last_processed_track, new_art = await media.get_current_track_info(session_manager, last_processed_track)
-
-        if track_info:
-            sig = track_signature(track_info)
-            now = asyncio.get_event_loop().time()
-            current_pos = track_info["position"]
-            is_seek = abs(current_pos - last_known_position) > 3.0
-            
-            if sig != last_sent_signature:
-                hardware.send_track_info(track_info)
-                last_sent_signature = sig
-                last_resync_time = now
-            elif is_seek or (now - last_resync_time) > 5: 
-                hardware.send_track_info(track_info)
-                last_resync_time = now
-
-            last_known_position = current_pos
-
-        if new_art: 
-            hardware.send_album_art(new_art)
-            
         await asyncio.sleep(0.6)
+
+
 
 def toggle_pause(icon, item):
     global is_paused
@@ -170,6 +179,7 @@ def start_asyncio_loop():
 def setup_icon(icon):
     icon.visible = True
 
+
 def toggle_discord(icon, item):
     if not item.checked:
         if not config.app_config.get("discord_client_id") or not config.app_config.get("discord_client_secret"):
@@ -182,6 +192,7 @@ def toggle_discord(icon, item):
     config.app_config["use_discord"] = not item.checked
     config.save_config()
     logger.info("Discord integration setting updated; restart required")
+
 
 def toggle_startup(icon, item):
     config.app_config["run_on_startup"] = not item.checked
@@ -202,6 +213,7 @@ def toggle_startup(icon, item):
                 logger.info("Disabled Windows startup")
             except Exception:
                 logger.exception("Failed to disable Windows startup")
+
 
 if __name__ == "__main__":
     configure_logging() 
