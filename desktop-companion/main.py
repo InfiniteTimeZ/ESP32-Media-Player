@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def configure_logging():
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -32,6 +32,7 @@ def track_signature(track_info):
     return (track_info.get("title"), track_info.get("artist"), track_info.get("album"), track_info.get("duration"), track_info.get("playback_status"), track_info.get("volume"), track_info.get("is_muted"), track_info.get("time"))
 
 async def main_loop():
+    hardware.start()
     global is_paused 
     last_processed_track = None
     last_resync_time = 0

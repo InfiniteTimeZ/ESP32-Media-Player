@@ -14,6 +14,8 @@ KNOWN_CH340_PIDS = {0x7522, 0x7523, 0x5523}
 connection = None
 uart_buffer = ""
 _ready_for_sync = False
+_writer_thread = None
+
 
 _write_lock = threading.RLock()
 _write_queue = queue.Queue()
@@ -125,7 +127,16 @@ def _serial_writer():
         finally:
             _write_queue.task_done()
 
-threading.Thread(target=_serial_writer, daemon=True).start()
+def start():
+    global _writer_thread
+
+    if _writer_thread is not None and _writer_thread.is_alive():
+        return
+
+    _writer_thread = threading.Thread(target=_serial_writer, name="esp32-serial-writer", daemon=True)
+    _writer_thread.start()
+    logger.debug("ESP32 serial writer started")
+
 
 def find_esp32_port():
     ports = serial.tools.list_ports.comports()
