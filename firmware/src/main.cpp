@@ -361,7 +361,7 @@ void handle_encoder_button(){
 
 void loop() {
     lv_timer_handler();
-    handleVolumeLogic();
+    handle_volume_logic();
     handle_serial_input();
     handle_encoder_button();
 
