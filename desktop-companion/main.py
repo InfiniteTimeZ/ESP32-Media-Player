@@ -247,6 +247,7 @@ def start_asyncio_loop():
 
 def main():
     configure_logging() 
+    config.load_config()
     threading.Thread(target=start_asyncio_loop, name="application-asyncio-loop", daemon=True).start()
     run_tray()
 
