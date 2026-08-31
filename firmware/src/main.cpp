@@ -16,8 +16,7 @@ constexpr uint32_t LVGL_BUFFER_LINES = 60;
 uint16_t touch_x, touch_y;
 uint32_t vol_lockout_timer = 0;
 
-/* 1. HARDWARE ENCODER DEFINITIONS & FUNCTIONS */
-#define ENC_PIN_A 19
+ #define ENC_PIN_A 19
 #define ENC_PIN_B 20
 #define ENC_PIN_D 8
 
@@ -33,6 +32,107 @@ static const int8_t KNOB_STATES[] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1
 void uart_error(hardwareSerial_error_t error)
 {
   Serial.printf("UART ERROR: %d\n", error);
+}
+
+void setup_serial(){
+    size_t rx_size = Serial.setRxBufferSize(1024 * 40);
+    Serial.begin(230400);  
+    Serial.setRxFIFOFull(64);
+    Serial.onReceiveError(uart_error);
+    Serial.printf("Serial RX buffer allocated: %u bytes\n", rx_size);
+}
+
+
+void setup_controllers(){
+    Wire.begin(15, 16);
+    delay(50);
+
+    while (true) {
+        if (i2cScanForAddress(0x30) && i2cScanForAddress(0x5D)) {
+            Serial.println("Both controllers detected");
+            break;
+        } else {
+            sendI2CCommand(250);
+            pinMode(1, OUTPUT);
+            digitalWrite(1, LOW);
+            delay(120);
+            pinMode(1, INPUT);
+            delay(100);
+        }
+    }
+    sendI2CCommand(0);
+}
+
+void setup_display(){
+    
+    gfx.init();
+    gfx.initDMA(); 
+    
+    gfx.startWrite();
+    gfx.fillScreen(TFT_BLACK);
+    gfx.endWrite();
+
+    lv_init();
+    lv_tick_set_cb(my_tick_get_cb);
+
+    constexpr size_t buffer_size = LCD_H_RES * LVGL_BUFFER_LINES * sizeof(uint16_t);
+    
+    buf = static_cast<uint8_t *>(heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
+    buf1 = static_cast<uint8_t *>(heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
+    
+    if (buf == nullptr || buf1 == nullptr) {
+        Serial.println("Failed to allocate INTERNAL LVGL display buffers");
+        abort();
+    }
+
+    lv_display_t *display = lv_display_create(LCD_H_RES, LCD_V_RES);
+    lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
+    lv_display_set_flush_cb(display, my_disp_flush);
+    lv_display_set_buffers(display, buf, buf1, buffer_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, my_touchpad_read);
+
+    setup_encoder();
+    
+    lv_indev_t *encoder_indev = lv_indev_create();
+    lv_indev_set_type(encoder_indev, LV_INDEV_TYPE_ENCODER);
+    lv_indev_set_read_cb(encoder_indev, my_encoder_read);
+}
+
+void setup_ui(){
+    delay(100);
+    gfx.fillScreen(TFT_BLACK);
+
+    ui_init();
+    register_screen_switch_handlers();
+    lv_obj_set_parent(ui_Volume_Panel, lv_layer_top());
+    lv_obj_set_parent(ui_TimeLabel, lv_layer_top());
+    lv_obj_set_style_text_color(ui_TimeLabel, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_add_event_cb(ui_SongPositionSlider, track_slider_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(ui_SongPositionSlider, track_slider_cb, LV_EVENT_RELEASED, NULL);
+    music_player_init();
+    
+    lv_obj_add_flag(ui_Volume_Panel, LV_OBJ_FLAG_HIDDEN);
+    init_avatar_buffers();
+
+    char str_buf[8];
+    snprintf(str_buf, sizeof(str_buf), "%d%%", currentVolume);
+    lv_label_set_text(ui_Vol_Percent, str_buf);
+
+    last_pos = encoder_counter;
+}
+
+void signal_ready(){
+
+    while (Serial.available() > 0) {
+        Serial.read();
+    }
+      
+    delay(50);
+    Serial.println();
+    Serial.println("ESP32_READY");
 }
 
 void IRAM_ATTR encoder_isr() {
@@ -61,8 +161,7 @@ void my_encoder_read(lv_indev_t *indev, lv_indev_data_t *data) {
     data->state = (digitalRead(ENC_PIN_D) == LOW) ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
 
-/* 2. DISPLAY & TOUCH DRIVER INTERFACES */
-void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
+ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     uint32_t w = area->x2 - area->x1 + 1;
     uint32_t h = area->y2 - area->y1 + 1;
 
@@ -87,8 +186,7 @@ uint32_t my_tick_get_cb() {
     return millis();
 }
 
-/* 3. INTERNAL BUS & I2C UTILITIES */
-bool i2cScanForAddress(uint8_t address) {
+ bool i2cScanForAddress(uint8_t address) {
     Wire.beginTransmission(address);
     return (Wire.endTransmission() == 0);
 }
@@ -122,8 +220,7 @@ void update_mute_visuals() {
     lv_obj_invalidate(album_container);
 }
 
-/* 5. INTEGRATED VOLUME MANAGER */
-void handleVolumeLogic() {
+ void handleVolumeLogic() {
     static int32_t last_volume_pos = 0;
     static uint32_t last_click_time = 0; 
     
@@ -202,96 +299,17 @@ void handleVolumeLogic() {
     }
 }
 
-/* 6. MAIN APPLICATION ENTRY POINTS */
-void setup() {
-    size_t rx_size = Serial.setRxBufferSize(1024 * 40);
-    Serial.begin(230400);  
-    Serial.setRxFIFOFull(64);
-    Serial.onReceiveError(uart_error);
-    Serial.printf("Serial RX buffer allocated: %u bytes\n", rx_size);
-    Wire.begin(15, 16);
-    delay(50);
-
-    while (1) {
-        if (i2cScanForAddress(0x30) && i2cScanForAddress(0x5D)) {
-            Serial.println("Both controllers detected");
-            break;
-        } else {
-            sendI2CCommand(250);
-            pinMode(1, OUTPUT);
-            digitalWrite(1, LOW);
-            delay(120);
-            pinMode(1, INPUT);
-            delay(100);
-        }
-    }
-    sendI2CCommand(0);
-
-    gfx.init();
-    gfx.initDMA(); 
+ void setup() {
+    setup_serial();
+    setup_controllers();
+    setup_display();
+    setup_ui();
     
-    gfx.startWrite();
-    gfx.fillScreen(TFT_BLACK);
-    gfx.endWrite();
-
-    lv_init();
-    lv_tick_set_cb(my_tick_get_cb);
-
-    constexpr size_t buffer_size = LCD_H_RES * LVGL_BUFFER_LINES * sizeof(uint16_t);
-    
-    buf = static_cast<uint8_t *>(heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
-    buf1 = static_cast<uint8_t *>(heap_caps_malloc(buffer_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
-    
-    if (buf == nullptr || buf1 == nullptr) {
-        Serial.println("Failed to allocate INTERNAL LVGL display buffers");
-        abort();
-    }
-
-    lv_display_t *display = lv_display_create(LCD_H_RES, LCD_V_RES);
-    lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
-    lv_display_set_flush_cb(display, my_disp_flush);
-    lv_display_set_buffers(display, buf, buf1, buffer_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
-
-    lv_indev_t *indev = lv_indev_create();
-    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(indev, my_touchpad_read);
-
-    setup_encoder();
-    lv_indev_t *encoder_indev = lv_indev_create();
-    lv_indev_set_type(encoder_indev, LV_INDEV_TYPE_ENCODER);
-    lv_indev_set_read_cb(encoder_indev, my_encoder_read);
-
-    delay(100);
-    gfx.fillScreen(TFT_BLACK);
-
-    ui_init();
-    register_screen_switch_handlers();
-    lv_obj_set_parent(ui_Volume_Panel, lv_layer_top());
-    lv_obj_set_parent(ui_TimeLabel, lv_layer_top());
-    lv_obj_set_style_text_color(ui_TimeLabel, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-    lv_obj_add_event_cb(ui_SongPositionSlider, track_slider_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(ui_SongPositionSlider, track_slider_cb, LV_EVENT_RELEASED, NULL);
-    music_player_init();
-    
-    lv_obj_add_flag(ui_Volume_Panel, LV_OBJ_FLAG_HIDDEN);
-    init_avatar_buffers();
-
-    char str_buf[8];
-    snprintf(str_buf, sizeof(str_buf), "%d%%", currentVolume);
-    lv_label_set_text(ui_Vol_Percent, str_buf);
-
-    last_pos = encoder_counter;
     Serial.println("Setup done");
+
+    signal_ready();
     
-    while(Serial.available() > 0) {
-        Serial.read();
-    }
     
-    // THE BOOTLOADER FIX: Pause to let UART settle, force a blank 
-    // line, and instantly signal Python so we don't wait 8 seconds!
-    delay(50);
-    Serial.println();
-    Serial.println("ESP32_READY");
 }
 
 void loop() {
