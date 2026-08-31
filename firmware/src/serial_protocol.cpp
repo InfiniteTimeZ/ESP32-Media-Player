@@ -213,8 +213,8 @@ void process_json_message(String &json_str) {
   JsonDocument doc;
   if (deserializeJson(doc, json_str)) return;
   
-  strncpy(current_player_state.song_name, doc["title"] | "", sizeof(current_player_state.song_name));
-  strncpy(current_player_state.artist_name, doc["artist"] | "", sizeof(current_player_state.artist_name));
+  strlcpy(current_player_state.song_name, doc["title"] | "", sizeof(current_player_state.song_name));
+  strlcpy(current_player_state.artist_name, doc["artist"] | "", sizeof(current_player_state.artist_name));
   current_player_state.duration_seconds = (int)(doc["duration"] | 0.0);
 
   if (!user_is_seeking && (millis() - seek_lockout_timer > 1500)) {
@@ -267,7 +267,7 @@ void process_json_message(String &json_str) {
 static lv_obj_t* create_user_card(int width, int height, const char* name) {
   lv_obj_t *card = lv_obj_create(ui_DiscordInfo);
   lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-  
+
   lv_obj_set_width(card, width);
   lv_obj_set_height(card, height);
   lv_obj_set_style_outline_width(card, 2, LV_PART_MAIN);
@@ -287,7 +287,8 @@ void process_voice_users_json(String &discord_user_buffer){
   JsonDocument doc;
   if (deserializeJson(doc, discord_user_buffer)) return;
 
-  int count = (int)(doc["count"]);
+  int total_count = max(0, (int)(doc["count"]));
+  int display_count = min(total_count, MAX_DISCORD_USERS);
   int width = (int)(doc["width"]);
   int height = (int)(doc["height"]);
 
@@ -298,21 +299,25 @@ void process_voice_users_json(String &discord_user_buffer){
     last_card_height = height;
   }
 
-  while (last_user_count > count) {
+  while (last_user_count > display_count) {
     lv_obj_t *card = lv_obj_get_child(ui_DiscordInfo, last_user_count - 1);
     if (card) lv_obj_del(card);
     last_user_count--;
   }
 
-  for (int i = 0; i < count; i++) {
+  for (int i = 0; i < display_count; i++) {
     const char* new_name = doc["users"][i]["name"];
+
     if (i < last_user_count) {
       if (last_user_names[i] != new_name) {
         lv_obj_t *card = lv_obj_get_child(ui_DiscordInfo, i);
+
         if (card) {
           lv_obj_t *name_label = lv_obj_get_child(card, 1);
+
           if (name_label) lv_label_set_text(name_label, new_name);
         }
+
         last_user_names[i] = new_name;
       }
     } else {
@@ -320,14 +325,15 @@ void process_voice_users_json(String &discord_user_buffer){
       last_user_names[i] = new_name;
     }
   }
-  last_user_count = count;
+  last_user_count = display_count;
 }
 
 void init_avatar_buffers() {
     shared_packet_buffer = (uint8_t*)heap_caps_malloc(MAX_PACKET_PAYLOAD, MALLOC_CAP_SPIRAM);
     
-    if (shared_packet_buffer == nullptr){
-      Serial.println("Fialed to allocate serial packet buffer");
+    if (shared_packet_buffer == nullptr) {
+        Serial.println("Failed to allocate serial packet buffer");
+        abort();
     }
     
     for (int i = 0; i < 2; i++){
@@ -366,6 +372,7 @@ void process_avatar_message(uint8_t index, const uint8_t* jpeg_data, size_t jpeg
 
   if (!avatar_sprite.drawJpg(jpeg_data, jpeg_len,0,0)){
     Serial.printf("Avatar JPEG decode failed: %lu bytes\n", (unsigned long)jpeg_len);
+    return;
   }
 
   uint16_t *sprite_ptr = (uint16_t*)avatar_sprite.getBuffer();
@@ -499,7 +506,7 @@ void handle_serial_input() {
 
       case READ_PACKET_TYPE:
         if (!is_valid_packet_type(byte)){
-          Serial.printf("Invalid packet type: 0x%02x\n", byte);
+          Serial.printf("Invalid packet type: 0x%02X\n", byte);
           reset_serial_parser();
           break;
          }
@@ -512,7 +519,7 @@ void handle_serial_input() {
          break;
 
       case READ_PACKET_LENGTH:
-        packet_length_bytes[ packet_length_index++] = byte;
+        packet_length_bytes[packet_length_index++] = byte;
 
         if(packet_length_index == 4){
           expected_payload_length = (uint32_t)packet_length_bytes[0] | ((uint32_t)packet_length_bytes[1] << 8) | ((uint32_t)packet_length_bytes[2] << 16) | ((uint32_t)packet_length_bytes[3] << 24);
