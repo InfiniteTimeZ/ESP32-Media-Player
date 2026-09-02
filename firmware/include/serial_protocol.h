@@ -1,6 +1,4 @@
 #pragma once
-#include <stdint.h>
-#include <Arduino.h>
 
-void handle_serial_input(void);
-void init_avatar_buffers();
+void init_serial_protocol();
+void handle_serial_input();

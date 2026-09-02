@@ -1,28 +1,37 @@
+import json
+import logging
+import queue
+import struct
+import threading
+import time
+
 import serial
 import serial.tools.list_ports
-import json
-import struct
-import time
-import threading
-import queue
-import logging
 
-logger = logging.getLogger(__name__)
 ESP32_VID = 0x1A86
 KNOWN_CH340_PIDS = {0x7522, 0x7523, 0x5523}
+_PACKET_MAGIC = b"\xA5\x5A"
 
 connection = None
 uart_buffer = ""
 _ready_for_sync = False
+_writer_thread = None
+_latest_album_art_packet = None
+_album_art_token_queued = False
+logger = logging.getLogger(__name__)
 
 _write_lock = threading.RLock()
 _write_queue = queue.Queue()
 _album_art_lock = threading.Lock()
 _album_art_token = object()
-_latest_album_art_packet = None
-_album_art_token_queued = False
 
-_PACKET_MAGIC = b"\xA5\x5A"
+
+def _build_packet(packet_type, payload=b""):
+    if not isinstance(packet_type, bytes) or len(packet_type) != 1:
+        raise ValueError("packet_type must be exactly one byte")
+
+    return (_PACKET_MAGIC + packet_type + struct.pack("<I", len(payload)) + payload)
+
 
 def _write_packet(serial_connection, data):
     chunk_size = 128
@@ -36,40 +45,6 @@ def _write_packet(serial_connection, data):
 
     serial_connection.flush()
 
-def _clear_pending_album_art():
-    global _latest_album_art_packet, _album_art_token_queued
-
-    with _album_art_lock:
-        _latest_album_art_packet = None
-        _album_art_token_queued = False
-
-def _build_packet(packet_type, payload=b""):
-    if not isinstance(packet_type,bytes) or len(packet_type) != 1:
-        raise ValueError("packet_type must be exactly one byte")
-
-    return (_PACKET_MAGIC + packet_type + struct.pack("<I", len(payload)) + payload)
-
-
-def request_ready():
-    serial_connection = None
-
-    try: 
-        with _write_lock:
-            serial_connection = connection
-
-            if (serial_connection is None or not serial_connection.is_open):
-                return False
-
-            packet = _build_packet(b"R")
-            serial_connection.write(packet)
-            serial_connection.flush()
-            return True
-        
-    except(serial.SerialException,OSError) as exc:
-        logger.warning("Failed to request ESP32  ready state: %s", exc)
-        disconnect(expected_connection=serial_connection)
-        return False
-    
 
 def _clear_write_queue():
     while True:
@@ -78,6 +53,15 @@ def _clear_write_queue():
             _write_queue.task_done()
         except queue.Empty:
             break
+
+
+
+def _clear_pending_album_art():
+    global _latest_album_art_packet, _album_art_token_queued
+
+    with _album_art_lock:
+        _latest_album_art_packet = None
+        _album_art_token_queued = False
 
 
 def _serial_writer():
@@ -108,24 +92,34 @@ def _serial_writer():
             with _write_lock:
                 serial_connection = connection
             
-                if serial_connection is None or not serial_connection.is_open:
+                if (serial_connection is None or not serial_connection.is_open):
                     continue
 
                 logger.debug( "Sending serial packet: %d bytes, large=%s", len(data), is_large)    
+                _write_packet(serial_connection, data)
                 if is_large:
-                    _write_packet(serial_connection, data)
                     time.sleep(0.10)
                 else:
                     _write_packet(serial_connection, data)   
             
-        except (serial.SerialException, OSError) as exc:
+        except(serial.SerialException, OSError) as exc:
             logger.warning("ESP32 serial connection lost: %s", exc)
             disconnect(expected_connection=serial_connection)
                         
         finally:
             _write_queue.task_done()
 
-threading.Thread(target=_serial_writer, daemon=True).start()
+
+def start():
+    global _writer_thread
+
+    if _writer_thread is not None and _writer_thread.is_alive():
+        return
+
+    _writer_thread = threading.Thread(target=_serial_writer, name="esp32-serial-writer", daemon=True)
+    _writer_thread.start()
+    logger.debug("ESP32 serial writer started")
+
 
 def find_esp32_port():
     ports = serial.tools.list_ports.comports()
@@ -133,6 +127,7 @@ def find_esp32_port():
         if port.vid == ESP32_VID and port.pid in KNOWN_CH340_PIDS:
             return port.device
     return None
+
 
 def connect():
     global connection, uart_buffer, _ready_for_sync
@@ -158,6 +153,7 @@ def connect():
             logger.exception("Failed to connect to ESP32 on %s", port_name)
             return False
 
+        
 def disconnect(expected_connection=None):
     global connection, uart_buffer, _ready_for_sync
 
@@ -179,12 +175,9 @@ def disconnect(expected_connection=None):
 
         uart_buffer = ""
 
+
 def is_connected():
     return connection is not None and connection.is_open
-
-def mark_ready_for_sync():
-    global _ready_for_sync
-    _ready_for_sync = is_connected()
 
 def is_ready_for_sync():
     return is_connected() and _ready_for_sync
@@ -207,6 +200,33 @@ def read_incoming():
         disconnect()
         return []
 
+    
+def request_ready():
+    serial_connection = None
+
+    try: 
+        with _write_lock:
+            serial_connection = connection
+
+            if (serial_connection is None or not serial_connection.is_open):
+                return False
+
+            packet = _build_packet(b"R")
+            serial_connection.write(packet)
+            serial_connection.flush()
+            return True
+        
+    except(serial.SerialException, OSError) as exc:
+        logger.warning("Failed to request ESP32 ready state: %s", exc)
+        disconnect(expected_connection=serial_connection)
+        return False
+    
+
+def mark_ready_for_sync():
+    global _ready_for_sync
+    _ready_for_sync = is_connected()
+
+
 def send_track_info(track_info):
     if not is_ready_for_sync(): 
         return
@@ -214,6 +234,7 @@ def send_track_info(track_info):
     payload = json.dumps(track_info).encode("utf-8")
     packet = _build_packet(b"T", payload)
     _write_queue.put((False, packet))
+
 
 def send_album_art(jpeg_bytes):
     global _latest_album_art_packet, _album_art_token_queued
@@ -235,21 +256,6 @@ def send_album_art(jpeg_bytes):
     logger.debug("Queueing album art: %d bytes", len(jpeg_bytes))
     _write_queue.put(_album_art_token)
 
-def send_voice_user_json(user_dict):
-    if not is_ready_for_sync(): 
-        return
-
-    payload = json.dumps(user_dict).encode("utf-8")
-    packet = _build_packet(b"U", payload)
-    _write_queue.put((False, packet))
-
-def send_avatar_image(index, jpeg_bytes):
-    if not is_ready_for_sync(): 
-        return
-    logger.debug( "Queueing Discord avatar %d: %d bytes", index, len(jpeg_bytes))
-    payload = bytes([index]) + jpeg_bytes
-    packet = _build_packet(b"A", payload)
-    _write_queue.put((True,packet))
 
 def send_discord_state(is_muted, is_deafened):
     if not is_ready_for_sync(): 
@@ -258,6 +264,25 @@ def send_discord_state(is_muted, is_deafened):
     payload = bytes([int(is_muted), int(is_deafened)])
     packet = _build_packet(b"D", payload)
     _write_queue.put((False, packet))
+
+
+def send_voice_user_json(user_dict):
+    if not is_ready_for_sync(): 
+        return
+
+    payload = json.dumps(user_dict).encode("utf-8")
+    packet = _build_packet(b"U", payload)
+    _write_queue.put((False, packet))
+
+
+def send_avatar_image(index, jpeg_bytes):
+    if not is_ready_for_sync(): 
+        return
+    logger.debug("Queueing Discord avatar %d: %d bytes", index, len(jpeg_bytes))
+    payload = bytes([index]) + jpeg_bytes
+    packet = _build_packet(b"A", payload)
+    _write_queue.put((True, packet))
+
 
 def send_voice_channel_name(name):
     if not is_ready_for_sync(): 

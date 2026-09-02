@@ -1,16 +1,15 @@
 import json
+import logging
 import os
+import threading
 import tkinter as tk
 from tkinter import simpledialog
-import threading
-import logging
 
 logger = logging.getLogger(__name__)
-appdata_dir = os.getenv('APPDATA')
-app_folder = os.path.join(appdata_dir, "ESP32_Media_Controller")
 
-os.makedirs(app_folder, exist_ok=True)
-CONFIG_FILE = os.path.join(app_folder, "config.json")
+APPDATA_DIR  = os.getenv('APPDATA')
+APP_FOLDER  = os.path.join(APPDATA_DIR, "ESP32_Media_Controller")
+CONFIG_FILE = os.path.join(APP_FOLDER, "config.json")
 
 
 
@@ -31,6 +30,8 @@ def load_config():
             logger.exception("Failed to load configuration from %s", CONFIG_FILE)
 
 def save_config():
+    os.makedirs(APP_FOLDER, exist_ok=True)
+
     try:
         with open(CONFIG_FILE, "w") as file:
             json.dump(app_config, file, indent=4)
@@ -41,7 +42,6 @@ def save_config():
 def prompt_for_discord_credentials(on_success):
     def _run_prompt():
         root = tk.Tk()
-        root.withdraw()
         root.withdraw()
         root.attributes('-topmost', True)
 
@@ -55,7 +55,7 @@ def prompt_for_discord_credentials(on_success):
         client_secret = simpledialog.askstring("Discord Setup", "Enter your Discord Client Secret:", parent=root)
         if not client_secret:
             root.destroy()
-            return False
+            return
 
         redirect_uri = simpledialog.askstring("Discord Setup", "Enter Redirect URI (Leave alone if unsure):", initialvalue="http://127.0.0.1", parent=root)
         if not redirect_uri:
@@ -70,6 +70,5 @@ def prompt_for_discord_credentials(on_success):
 
         on_success()
 
-    threading.Thread(target=_run_prompt, daemon=True).start()
+    threading.Thread(target=_run_prompt, name="discord-config-prompt", daemon=True).start()
 
-load_config()

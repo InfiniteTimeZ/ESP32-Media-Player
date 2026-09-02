@@ -112,12 +112,12 @@ void lv_disc_call(lv_event_t * e)
 
 void switch_to_discord_screen(lv_event_t * e) {
     // Crossfade to Discord screen over 300ms
-    lv_screen_load_anim(ui_Discord_Screen, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, false);
+    lv_screen_load_anim(ui_Discord_Screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
 }
 
 void switch_to_music_screen(lv_event_t * e) {
     // Crossfade back to Music screen over 300ms
-    lv_screen_load_anim(ui_Music_Screen, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, false);
+    lv_screen_load_anim(ui_Music_Screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
 }
 
 void register_screen_switch_handlers(void) {

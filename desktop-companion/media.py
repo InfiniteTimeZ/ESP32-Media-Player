@@ -18,8 +18,14 @@ volume_queue = queue.Queue()
 current_windows_volume = -1
 current_windows_mute = False
 empty_session_count = 0
-logger = logging.getLogger(__name__)
 last_album_art_digest = None
+_volume_thread = None
+_ALBUM_ART_ATTEMPTS = 8
+_ALBUM_ART_RETRY_DELAY = 0.15
+
+logger = logging.getLogger(__name__)
+
+
 
 def get_vibrant_color(img):
     r, g, b = img.resize((1, 1)).getpixel((0, 0))
@@ -36,7 +42,7 @@ def clean_text(text):
     ascii_text = nfkd_form.encode('ascii', 'ignore').decode('utf-8')
     return re.sub(r'\s+', ' ', ascii_text).strip()
 
-def volume_worker():
+def _volume_worker():
     global current_windows_volume, current_windows_mute
     import comtypes
     from pycaw.pycaw import AudioUtilities
@@ -63,8 +69,8 @@ def volume_worker():
             current_windows_volume = new_vol
             current_windows_mute = new_mute
 
-        except Exception as exc:
-             logger.exception("Failed to read Windows volume state", exc)
+        except Exception:
+             logger.exception("Failed to read Windows volume state")
 
         # 2. WRITE: Process any ESP32 volume/mute commands
         try:
@@ -79,7 +85,18 @@ def volume_worker():
         except queue.Empty:
             pass
 
-threading.Thread(target=volume_worker, daemon=True).start()
+
+def start():
+    global _volume_thread
+
+    if _volume_thread is not None and _volume_thread.is_alive():
+        return
+
+    _volume_thread = threading.Thread(target=_volume_worker, name="windows-volume-worker", daemon=True)
+    _volume_thread.start()
+
+    logger.debug("Windows volume worker started")
+
 
 def set_windows_volume(vol_percent):
     while not volume_queue.empty():
@@ -194,7 +211,7 @@ async def get_current_track_info(session_manager, last_track_id):
 
         await asyncio.sleep(0.25)
 
-        for attempt in range(5):  
+        for attempt in range(_ALBUM_ART_ATTEMPTS):  
             refreshed_info = await current_session.try_get_media_properties_async()
             
             if refreshed_info and refreshed_info.thumbnail:
@@ -218,7 +235,7 @@ async def get_current_track_info(session_manager, last_track_id):
                     selected_jpeg = candidate_jpeg
                     selected_digest = candidate_digest
  
-                await asyncio.sleep(0.15)  
+                await asyncio.sleep(_ALBUM_ART_RETRY_DELAY)  
 
         if album_art:
             last_known_color = get_vibrant_color(album_art)
