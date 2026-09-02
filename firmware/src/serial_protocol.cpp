@@ -1,17 +1,10 @@
 #include <Arduino.h>
-#include <ArduinoJson.h>
-#include <lvgl.h>
-#include "pins_config.h"
-#include "ui.h"
-#include "music_player_logic.h"
 #include "serial_protocol.h"
-#include "LovyanGFX_Driver.h"
 #include "discord_ui.h"
+#include "media_display.h"
 
 
-#define ALBUM_WIDTH 250
-#define ALBUM_HEIGHT 250
-#define ALBUM_BUFFER_SIZE (ALBUM_WIDTH * ALBUM_HEIGHT * 2)
+
 #define PACKET_MAGIC_1 0xA5
 #define PACKET_MAGIC_2 0x5A
 #define MAX_IMAGE_PAYLOAD 60000
@@ -25,7 +18,7 @@ enum SerialState {
   READ_PACKET_PAYLOAD
 }; 
 
-SerialState serial_state = FIND_MAGIC_1;
+static SerialState serial_state = FIND_MAGIC_1;
  
 static uint32_t last_byte_time = 0;
 static uint32_t discarded_bytes = 0;
@@ -38,29 +31,6 @@ static uint32_t expected_payload_length = 0;
 static uint32_t payload_bytes_read = 0;
 
 static uint8_t* shared_packet_buffer = nullptr;
-
-
-extern bool user_is_seeking;
-extern uint32_t seek_lockout_timer;
-extern int currentVolume;
-extern uint32_t vol_lockout_timer;
-extern LGFX gfx;
-extern bool is_system_muted;
-extern void update_mute_visuals();
-
-static uint16_t* album_pixel_buffers[2] = { nullptr, nullptr };
-static lv_image_dsc_t received_img_dsc[2];
-static int dsc_index = 0;
-static LGFX_Sprite art_sprite(&gfx);
-static bool sprite_initialized = false;
-
-
-
-
-
-
-void process_json_message(String &json_str);
-void process_image_message(uint8_t* jpeg_data, uint32_t length);
 
 
 static String payload_to_string(const uint8_t* payload, uint32_t length){
@@ -102,7 +72,7 @@ static void process_packet(uint8_t type, const uint8_t* payload, uint32_t length
 
     case 'T': {
       String json = payload_to_string(payload, length);
-      process_json_message(json);
+      process_track_json(json);
       break;
     }
 
@@ -112,7 +82,7 @@ static void process_packet(uint8_t type, const uint8_t* payload, uint32_t length
         return;
       }
 
-      process_image_message((uint8_t*)payload, length);
+      process_album_art(payload, length);
       break;
     }
 
@@ -165,64 +135,6 @@ static void reset_serial_parser(){
   payload_bytes_read = 0;
 
 }
-static void fade_anim_cb(void * obj, int32_t v) {
-    lv_obj_set_style_opa((lv_obj_t *)obj, v, LV_PART_MAIN);
-}
-
-void process_json_message(String &json_str) {
-  JsonDocument doc;
-  if (deserializeJson(doc, json_str)) return;
-  
-  strlcpy(current_player_state.song_name, doc["title"] | "", sizeof(current_player_state.song_name));
-  strlcpy(current_player_state.artist_name, doc["artist"] | "", sizeof(current_player_state.artist_name));
-  current_player_state.duration_seconds = (int)(doc["duration"] | 0.0);
-
-  if (!user_is_seeking && (millis() - seek_lockout_timer > 1500)) {
-      current_player_state.position_seconds = (int)(doc["position"] | 0.0);
-  } 
-
-  current_player_state.is_playing = (strcmp(doc["playback_status"] | "", "PLAYING") == 0);
-
-  lv_label_set_text(ui_Song_Name, current_player_state.song_name);
-  lv_label_set_text(ui_Song_Name2, current_player_state.song_name);
-  lv_label_set_text(ui_Artist_Name, current_player_state.artist_name);
-  update_slider_and_labels();
-
-  sync_play_pause_visuals();
-
-  int incoming_vol = doc["volume"] | -1;
-  if (incoming_vol != -1 && (millis() - vol_lockout_timer > 1000)) {
-    currentVolume = incoming_vol;
-    lv_bar_set_value(ui_Bar1, currentVolume, LV_ANIM_OFF);
-    char str_buf[8];
-    snprintf(str_buf, sizeof(str_buf), "%d%%", currentVolume);
-    lv_label_set_text(ui_Vol_Percent, str_buf);
-  }
-
-  if (doc.containsKey("bg_color")) {
-      JsonArray color_arr = doc["bg_color"];
-      uint32_t bright_hex = ((uint32_t)color_arr[0] << 16) | ((uint32_t)color_arr[1] << 8) | (int)color_arr[2];
-      lv_obj_set_style_bg_color(ui_SongPositionSlider, lv_color_hex(bright_hex), LV_PART_INDICATOR);
-      
-      uint32_t dim_hex = (((uint32_t)color_arr[0]/2) << 16) | (((uint32_t)color_arr[1]/2) << 8) | ((int)color_arr[2]/2);
-      lv_obj_set_style_bg_color(ui_Music_Screen, lv_color_hex(dim_hex), LV_PART_MAIN);
-      lv_obj_set_style_bg_grad_color(ui_Music_Screen, lv_color_hex(0x000000), LV_PART_MAIN); 
-      lv_obj_set_style_bg_grad_dir(ui_Music_Screen, LV_GRAD_DIR_VER, LV_PART_MAIN);
-      lv_obj_set_style_bg_color(ui_Bar1, lv_color_hex(bright_hex), LV_PART_INDICATOR);
-  }
-
-  if (doc.containsKey("time")) {
-      lv_label_set_text(ui_TimeLabel, doc["time"]); 
-  }
-
-  if (doc.containsKey("is_muted")) {
-      bool incoming_mute = doc["is_muted"];
-      if (incoming_mute != is_system_muted) {
-          is_system_muted = incoming_mute;
-          update_mute_visuals(); 
-      }
-  }
-}
 
 
 static void init_packet_buffer(){
@@ -234,77 +146,8 @@ static void init_packet_buffer(){
 }
 
 
-
-void init_album_art_buffers() {
-    
-    for (int i = 0; i < 2; i++){
-      album_pixel_buffers[i] = (uint16_t*)heap_caps_malloc(ALBUM_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
-
-      if(album_pixel_buffers[i] == nullptr){
-        Serial.printf("Failed to allocate album buffer %d\n", i);
-      }
-    }
-}
-
-
 void init_serial_protocol(){
   init_packet_buffer();
-  init_album_art_buffers();
-}
-
-
-void process_image_message(uint8_t *jpeg_data, uint32_t length) {
-  if (!sprite_initialized) {
-    art_sprite.setPsram(true);
-    art_sprite.setColorDepth(16); 
-    if (art_sprite.createSprite(250, 250) == nullptr) return;
-    sprite_initialized = true;
-  }
-
-  if (!art_sprite.drawJpg(jpeg_data, length, 0, 0)){
-    Serial.printf("Album JPEG decode failed: %lu bytes\n", (unsigned long)length);
-    return;
-  } 
-
-  uint16_t* pixels = (uint16_t*)art_sprite.getBuffer();
-  for (int i = 0; i < 250 * 250; i++) {
-      pixels[i] = (pixels[i] << 8) | (pixels[i] >> 8);
-  }
-
-  dsc_index = (dsc_index + 1) % 2; 
-
-  if(album_pixel_buffers[dsc_index] == nullptr){
-  Serial.println("Album image buffer unavailable");
-  return;
-  }
-
-  lv_image_cache_drop(&received_img_dsc[dsc_index]);
-
-  memcpy(album_pixel_buffers[dsc_index], art_sprite.getBuffer(), ALBUM_BUFFER_SIZE);
-
-
-  received_img_dsc[dsc_index].header.magic = LV_IMAGE_HEADER_MAGIC;
-  received_img_dsc[dsc_index].header.cf = LV_COLOR_FORMAT_RGB565;
-  received_img_dsc[dsc_index].header.flags = 0;
-  received_img_dsc[dsc_index].header.w = ALBUM_WIDTH;
-  received_img_dsc[dsc_index].header.h = ALBUM_HEIGHT;
-  received_img_dsc[dsc_index].header.stride = ALBUM_WIDTH * 2; 
-  received_img_dsc[dsc_index].data_size = ALBUM_BUFFER_SIZE;
-  received_img_dsc[dsc_index].data = (const uint8_t *)album_pixel_buffers[dsc_index];
-
-  lv_image_set_src(ui_SongImage, &received_img_dsc[dsc_index]);
-  lv_obj_invalidate(ui_SongImage);
-  Serial.printf("Album image applied: %lu bytes\n", (unsigned long)length);
-
-  lv_obj_set_style_opa(ui_SongImage, 0, LV_PART_MAIN);
-  lv_anim_t a;
-  lv_anim_init(&a);
-  lv_anim_set_var(&a, ui_SongImage);
-  lv_anim_set_values(&a, 0, 255);           
-  lv_anim_set_time(&a, 500);            
-  lv_anim_set_exec_cb(&a, fade_anim_cb);   
-  lv_anim_set_path_cb(&a, lv_anim_path_ease_out); 
-  lv_anim_start(&a);
 }
 
 void handle_serial_input() {
@@ -406,3 +249,5 @@ void handle_serial_input() {
     }
   }
 }
+
+

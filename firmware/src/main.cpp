@@ -9,6 +9,7 @@
 #include "music_player_logic.h"
 #include "serial_protocol.h"
 #include "discord_ui.h"
+#include "media_display.h"
 
 LGFX gfx;
 static uint8_t *buf;
@@ -293,6 +294,7 @@ void setup_ui(){
     
     lv_obj_add_flag(ui_Volume_Panel, LV_OBJ_FLAG_HIDDEN);
     init_serial_protocol();
+    init_media_display();
     init_discord_ui_buffers();
 
     char str_buf[8];
