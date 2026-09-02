@@ -117,21 +117,6 @@ void sendI2CCommand(uint8_t command) {
 }
 
 
-void update_mute_visuals() {
-    lv_obj_t* album_container = lv_obj_get_parent(ui_SongImage);
-
-    if (is_system_muted) {
-        lv_obj_set_style_outline_width(album_container, 6, LV_PART_MAIN);
-        lv_obj_set_style_outline_color(album_container, lv_color_hex(0xF65552), LV_PART_MAIN); 
-        lv_obj_set_style_outline_opa(album_container, 255, LV_PART_MAIN);
-    } else {
-        lv_obj_set_style_outline_width(album_container, 0, LV_PART_MAIN);
-    }
-    
-    lv_obj_invalidate(album_container);
-}
-
-
  void handle_volume_logic() {
     static int32_t last_volume_pos = 0;
     static uint32_t last_click_time = 0; 
