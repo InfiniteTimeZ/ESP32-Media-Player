@@ -4,12 +4,42 @@ This guide is for users who already have the ESP32 Media Player assembled.
 
 ## 1. Flash the ESP32
 
-Use the browser-based firmware installer or the provided release firmware image.
+The easiest way to install the firmware is through the browser-based firmware installer.
 
-- [ESP-WEBTOOLS](https://esptool.spacehuhn.com/)
+- [*Open the ESP32 Media Player Firmware Installer*](https://infinitetimez.github.io/ESP32-Media-Player/)
 
+### Browser Requirements
 
-Connect the ESP32 display over USB, select the device, and install the firmware.
+Use a current desktop version of:
+
+- Google Chrome
+- Microsoft Edge
+
+The installer requires browser support for Web Serial.
+
+### Installation
+
+1. Connect the CrowPanel display to your computer over USB.
+2. Close the ESP32 Media Sync desktop companion and any serial-monitoring software.
+3. Open the browser firmware installer.
+4. Click **Install Firmware**.
+5. Select the ESP32-S3 device when prompted.
+6. Wait for the firmware installation to complete.
+7. Allow the display to restart.
+
+The browser installer automatically flashes the complete merged firmware image at the correct address. No PlatformIO installation or manual flash offsets are required.
+
+### Manual Firmware Installation
+
+The merged firmware image is also available from the GitHub Releases page:
+
+`ESP32-Media-Player-v0.1.0-firmware.bin`
+
+If flashing manually, write the merged firmware image beginning at address:
+
+```text
+0x0000
+```
 
 ## 2. Install the Windows Companion
 

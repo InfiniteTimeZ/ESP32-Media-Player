@@ -120,9 +120,9 @@ The ESP32 renders that information using LVGL and sends physical/touch control c
 
 If you already have the hardware assembled, see the **[Quick Start Guide](docs/QUICK_START.md)**.
 
-The intended release setup is:
+The recommended setup is:
 
-1. Flash the provided ESP32 firmware.
+1. Flash the ESP32 using the [**browser firmware installer**](https://infinitetimez.github.io/ESP32-Media-Player/).
 2. Download the Windows companion executable from the GitHub Releases page.
 3. Connect the display over USB.
 4. Run the desktop companion.
@@ -130,7 +130,11 @@ The intended release setup is:
 
 No Python or PlatformIO installation is required when using the prebuilt release files.
 
-> A browser-based ESP32 firmware installer is planned for the release workflow so users can flash the display without installing the embedded development environment.
+The easiest way to install the firmware is through the browser-based installer:
+
+[**Flash the ESP32 Media Player Firmware**](https://infinitetimez.github.io/ESP32-Media-Player/)
+
+The installer handles the required ESP32-S3 flash configuration automatically. No PlatformIO installation or manual flash addresses are required.
 
 ---
 
@@ -524,13 +528,15 @@ http://127.0.0.1
 
 ## Releases
 
-Prebuilt releases are intended to include:
+Prebuilt releases include:
 
 - Windows desktop companion `.exe`
-- Prebuilt ESP32 firmware
-- Source code
+- Windows debug `.exe`
+- merged ESP32 firmware image
+- SHA-256 checksums
+- source code
 
-The goal is for normal users to be able to use the project without installing Python, PlatformIO, or other development tools.
+Normal users can install the ESP32 firmware using the [**browser firmware installer**](https://infinitetimez.github.io/ESP32-Media-Player/) without installing PlatformIO or the ESP32 development environment.
 
 See the **GitHub Releases** page for available builds.
 

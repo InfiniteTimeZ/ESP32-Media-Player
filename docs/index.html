@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 Media Player Firmware Installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; background:#111318; color:#f4f4f5; }
+    main { width:min(680px, calc(100% - 40px)); padding:32px; border:1px solid #2c3038; border-radius:16px; background:#181b21; }
+    h1 { margin-top:0; }
+    p, li { line-height:1.6; }
+    .warning { margin:24px 0; padding:16px; border:1px solid #464b55; border-radius:10px; background:#20242b; }
+    .install { margin:28px 0; }
+    button { border:0; border-radius:10px; padding:12px 20px; font:inherit; font-weight:700; cursor:pointer; }
+    .small { font-size:.9rem; opacity:.8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ESP32 Media Player</h1>
+    <p>Install the ESP32 Media Player firmware directly from your browser. No PlatformIO or ESP32 development environment is required.</p>
+
+    <div class="warning">
+      <strong>Supported hardware:</strong>
+      This firmware is intended for the reference ELECROW CrowPanel Advance 4.3-inch ESP32-S3 build using 16 MB flash and 8 MB PSRAM.
+    </div>
+
+    <h2>Before installing</h2>
+    <ol>
+      <li>Connect the display to your computer over USB.</li>
+      <li>Close the ESP32 Media Sync desktop companion and any serial monitor.</li>
+      <li>Click <strong>Install Firmware</strong>.</li>
+      <li>Select the ESP32-S3 serial device when your browser asks.</li>
+      <li>Wait for flashing to complete before disconnecting the display.</li>
+    </ol>
+
+    <div class="install">
+      <esp-web-install-button manifest="./manifest.json">
+        <button slot="activate">Install Firmware</button>
+        <span slot="unsupported">This browser does not support the required Web Serial features. Try a current desktop version of Chrome or Edge.</span>
+        <span slot="not-allowed">Firmware installation requires a secure HTTPS page.</span>
+      </esp-web-install-button>
+    </div>
+
+    <p class="small">Firmware version: <code>v0.1.0</code></p>
+  </main>
+</body>
+</html>
