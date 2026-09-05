@@ -556,15 +556,9 @@ See the **GitHub Releases** page for available builds.
 
 ## Project Status
 
-The ESP32 Media Player is currently preparing for its first public release.
+The ESP32 Media Player is currently on its first public release.
 
-The current focus is:
-
-- Release packaging
-- Simplified firmware installation
-- Documentation
-- Reproducible Windows builds
-- Hardware recreation instructions
+This was primarily a summer project, and since I'm a student, updates may be inconsistent depending on how busy I am. If you run into any issues, feel free to open one and I'll get to it when I can.
 
 ---
 
