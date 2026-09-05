@@ -7,6 +7,7 @@
 .DS_Store
 Thumbs.db
 firmware/src/project.info
+firmware/upload_verbose.txt
 
 # Python
 __pycache__/
@@ -30,3 +31,6 @@ dist/
 
 # Local config/secrets
 config.json
+
+# Local release staging
+releases/
