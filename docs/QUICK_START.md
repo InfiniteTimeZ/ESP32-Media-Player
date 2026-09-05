@@ -6,7 +6,8 @@ This guide is for users who already have the ESP32 Media Player assembled.
 
 Use the browser-based firmware installer or the provided release firmware image.
 
-[Browser flasher link goes here]
+- [ESP-WEBTOOLS](https://esptool.spacehuhn.com/)
+
 
 Connect the ESP32 display over USB, select the device, and install the firmware.
 
