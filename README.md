@@ -50,8 +50,6 @@ The touchscreen provides controls for:
 - Play/pause
 - Previous/next track
 - Seeking
-- Volume
-- Media interaction
 - Discord voice controls when Discord integration is enabled
 
 ### Discord Integration
@@ -523,6 +521,14 @@ In the application's **OAuth2** settings, add:
 ```text
 http://127.0.0.1
 ```
+
+### 5. Enable Discord Integration
+
+Run the Windows desktop companion and open its system-tray menu.
+
+Enable **Discord Integration** and enter the Application ID, Client Secret, and redirect URI when prompted.
+
+Restart the desktop companion after enabling Discord integration.
 
 ---
 

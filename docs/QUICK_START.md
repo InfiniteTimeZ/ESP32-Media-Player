@@ -109,7 +109,7 @@ Restart the desktop companion and reconnect the display.
 
 ### Album artwork does not update immediately
 
-Windows media applications occasionally provide stale or delayed thumbnail data. The companion automatically retries artwork retrieval with the next song arrival.
+Windows media applications occasionally provide stale or delayed thumbnail data. The companion retries artwork retrieval several times when a new track is detected, but some applications may still provide stale artwork.
 
 ### Discord information is not appearing
 
