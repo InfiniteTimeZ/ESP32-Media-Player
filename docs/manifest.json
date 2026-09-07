@@ -1,6 +1,6 @@
 {
   "name": "ESP32 Media Player",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "new_install_prompt_erase": false,
   "new_install_improv_wait_time": 0,
   "builds": [
@@ -9,7 +9,7 @@
       "improv": false,
       "parts": [
         {
-          "path": "firmware/ESP32-Media-Player-v0.1.0-firmware.bin",
+          "path": "firmware/ESP32-Media-Player-v0.1.1-firmware.bin",
           "offset": 0
         }
       ]
