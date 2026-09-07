@@ -48,7 +48,7 @@ def _volume_worker():
     from pycaw.pycaw import AudioUtilities
     comtypes.CoInitialize()
     
-    # Initialize the device ONCE outside the loop to get a live, un-cached hardware pointer!
+    # Initialize the Windows audio endpoint once for the worker.
     try:
         device = AudioUtilities.GetSpeakers()
         volume = device.EndpointVolume
@@ -62,7 +62,7 @@ def _volume_worker():
             new_vol = int(volume.GetMasterVolumeLevelScalar() * 100)
             new_mute = bool(volume.GetMute())
             
-            # Print a debug message so we can visibly verify Windows told Python!
+            
             if new_mute != current_windows_mute:
                 logger.debug("Windows mute state changed to %s", new_mute)
                 
@@ -72,7 +72,7 @@ def _volume_worker():
         except Exception:
              logger.exception("Failed to read Windows volume state")
 
-        # 2. WRITE: Process any ESP32 volume/mute commands
+      
         try:
             item = volume_queue.get(timeout=0.2)
             if item == "TOGGLE_MUTE":

@@ -99,8 +99,6 @@ def _serial_writer():
                 _write_packet(serial_connection, data)
                 if is_large:
                     time.sleep(0.10)
-                else:
-                    _write_packet(serial_connection, data)   
             
         except(serial.SerialException, OSError) as exc:
             logger.warning("ESP32 serial connection lost: %s", exc)

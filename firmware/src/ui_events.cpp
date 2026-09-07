@@ -6,16 +6,14 @@
 #include "ui.h"
 #include "music_player_logic.h"
 #include "Arduino.h"
-extern bool is_playing;
 extern bool user_is_seeking;
-extern void sync_play_pause_visuals();
 uint32_t seek_lockout_timer = 0;
 
 
 
 void init_media_player_cb(lv_event_t * e)
 {
-	// Your code here
+	 
 }
 
 
@@ -111,12 +109,12 @@ void lv_disc_call(lv_event_t * e)
 // --- SCREEN SWITCHING WITH FADE ANIMATION ---
 
 void switch_to_discord_screen(lv_event_t * e) {
-    // Crossfade to Discord screen over 300ms
+    // Crossfade to Discord screen over 220ms
     lv_screen_load_anim(ui_Discord_Screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
 }
 
 void switch_to_music_screen(lv_event_t * e) {
-    // Crossfade back to Music screen over 300ms
+    // Crossfade back to Music screen over 220ms
     lv_screen_load_anim(ui_Music_Screen, LV_SCR_LOAD_ANIM_FADE_ON, 220, 0, false);
 }
 
