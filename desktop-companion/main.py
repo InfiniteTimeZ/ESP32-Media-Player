@@ -217,8 +217,14 @@ def quit_app(icon, item):
     os._exit(0)
 
 
+def resource_path(relative_path):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(__file__), relative_path)
+
+
 def create_tray_icon():
-    return Image.new('RGBA', (64, 64), color=(0, 255, 0, 255))
+    return Image.open(resource_path("assets/esp32_media_player_icon_256.png"))
 
 
 def create_tray_menu():
