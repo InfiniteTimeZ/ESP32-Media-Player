@@ -283,6 +283,10 @@ These changes were introduced after early versions could occasionally display co
 ```text
 ESP32-Media-Player/
 ├── desktop-companion/
+│   ├── assets/
+│   │   ├── esp32_media_player_icon_256.ico
+│   │   └── esp32_media_player_icon_256.png
+│   │
 │   ├── main.py
 │   ├── hardware.py
 │   ├── media.py
@@ -290,43 +294,90 @@ ESP32-Media-Player/
 │   ├── discord_client.py
 │   ├── config.py
 │   ├── requirements.txt
-│   └── ESP32-Media-Sync.spec
+│   ├── ESP32-Media-Sync.spec
+│   └── ESP32-Media-Sync-Debug.spec
 │
 ├── firmware/
+│   ├── boards/
+│   │   └── ESP32-S3-WROOM-1-N16R8.json
+│   │
 │   ├── include/
+│   │   ├── LovyanGFX_Driver.h
 │   │   ├── discord_ui.h
+│   │   ├── lv_conf.h
 │   │   ├── media_display.h
 │   │   ├── music_player_logic.h
-│   │   ├── serial_protocol.h
-│   │   └── ...
+│   │   ├── pins_config.h
+│   │   └── serial_protocol.h
 │   │
 │   ├── src/
-│   │   ├── main.cpp
+│   │   ├── components/
+│   │   │   ├── ui_comp.c
+│   │   │   ├── ui_comp.h
+│   │   │   ├── ui_comp_hook.c
+│   │   │   ├── ui_comp_hook.h
+│   │   │   ├── ui_comp_image2.c
+│   │   │   ├── ui_comp_image2.h
+│   │   │   ├── ui_comp_panel1.c
+│   │   │   └── ui_comp_panel1.h
+│   │   │
+│   │   ├── images/
+│   │   │   └── generated UI image assets
+│   │   │
+│   │   ├── screens/
+│   │   │   ├── ui_Discord_Screen.c
+│   │   │   ├── ui_Discord_Screen.h
+│   │   │   ├── ui_Music_Screen.c
+│   │   │   └── ui_Music_Screen.h
+│   │   │
+│   │   ├── CMakeLists.txt
 │   │   ├── discord_ui.cpp
+│   │   ├── filelist.txt
+│   │   ├── main.cpp
 │   │   ├── media_display.cpp
 │   │   ├── music_player_logic.c
 │   │   ├── serial_protocol.cpp
-│   │   └── generated UI files
+│   │   ├── ui.c
+│   │   ├── ui.h
+│   │   ├── ui_events.cpp
+│   │   ├── ui_events.h
+│   │   ├── ui_helpers.c
+│   │   └── ui_helpers.h
 │   │
-│   └── platformio.ini
+│   ├── partitions.csv
+│   ├── platformio.ini
+│   ├── sdkconfig.defaults
+│   └── sdkconfig.defaults.esp32s3
 │
 ├── hardware/
 │   ├── 3d-models/
+│   │   ├── Complete_Housing_Assembly.f3d
+│   │   ├── Display_Housing.3mf
 │   │   ├── Display_Housing_Print.stl
+│   │   ├── Stand_Print.3mf
 │   │   └── Stand_Print.stl
 │   │
 │   ├── images/
-│   │   └── wiring/
+│   │   ├── wiring/
+│   │   │   ├── crowpanel-pinout.png
+│   │   │   └── ec11-pin-labels.png
+│   │   └── display_showcase.jpg
 │   │
 │   ├── ASSEMBLY.md
 │   └── BOM.md
 │
 ├── docs/
+│   ├── firmware/
+│   │   └── ESP32-Media-Player-v0.1.1-firmware.bin
+│   ├── .nojekyll
+│   ├── index.html
+│   ├── manifest.json
 │   └── QUICK_START.md
 │
-├── README.md
+├── .gitattributes
+├── .gitignore
 ├── LICENSE
-└── .gitignore
+└── README.md
 ```
 
 ---
@@ -562,9 +613,8 @@ See the **GitHub Releases** page for available builds.
 
 ## Project Status
 
-The ESP32 Media Player is currently on its first public release.
-
-This was primarily a summer project, and since I'm a student, updates may be inconsistent depending on how busy I am. If you run into any issues, feel free to open one and I'll get to it when I can.
+ 
+This was primarily a summer project, and since I'm a student, updates will likely be seldom depending on how busy I am. If you run into any issues, feel free to open one and I'll get to it when I can.
 
 ---
 
