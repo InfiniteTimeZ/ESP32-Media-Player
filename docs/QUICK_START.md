@@ -1,41 +1,27 @@
 # Quick Start
 
-This guide is for users who already have the ESP32 Media Player assembled.
+This guide continues from the main README and is intended for users who already have the ESP32 Media Player assembled.
 
 ## 1. Flash the ESP32
 
-The easiest way to install the firmware is through the browser-based firmware installer.
+The easiest installation method is the [browser firmware installer](https://infinitetimez.github.io/ESP32-Media-Player/).
 
-- [*Open the ESP32 Media Player Firmware Installer*](https://infinitetimez.github.io/ESP32-Media-Player/)
+Use a current desktop version of **Google Chrome** or **Microsoft Edge**.
 
-### Browser Requirements
-
-Use a current desktop version of:
-
-- Google Chrome
-- Microsoft Edge
-
-The installer requires browser support for Web Serial.
-
-### Installation
-
-1. Connect the CrowPanel display to your computer over USB.
-2. Close the ESP32 Media Sync desktop companion and any serial-monitoring software.
-3. Open the browser firmware installer.
+1. Connect the CrowPanel to the computer over USB.
+2. Close the desktop companion and any serial-monitoring software.
+3. Open the browser installer.
 4. Click **Install Firmware**.
-5. Select the ESP32-S3 device when prompted.
-6. Wait for the firmware installation to complete.
-7. Allow the display to restart.
+5. Select the ESP32-S3 device.
+6. Wait for installation to finish and allow the display to restart.
 
-The browser installer automatically flashes the complete merged firmware image at the correct address. No PlatformIO installation or manual flash offsets are required.
+The installer flashes the complete merged firmware image automatically. No PlatformIO installation or manual flash offsets are required.
 
 ### Manual Firmware Installation
 
-The merged firmware image is also available from the GitHub Releases page:
+The merged firmware image is also available from GitHub Releases.
 
-`ESP32-Media-Player-v0.1.0-firmware.bin`
-
-If flashing manually, write the merged firmware image beginning at address:
+If flashing manually, write the merged image beginning at:
 
 ```text
 0x0000
@@ -43,77 +29,59 @@ If flashing manually, write the merged firmware image beginning at address:
 
 ## 2. Install the Windows Companion
 
-Download the latest Windows executable from the GitHub Releases page.
-
-Run:
-
-ESP32-Media-Sync-v0.1.0-Windows-x64.exe
+Download the latest Windows executable from GitHub Releases and run it.
 
 The application runs from the Windows system tray.
 
 ## 3. Connect the Display
 
-Connect the ESP32 Media Player to the PC using USB.
+Connect the ESP32 Media Player over USB. The desktop companion automatically searches for the device and establishes the serial connection.
 
-The desktop companion will automatically search for the ESP32 and establish the serial connection.
-
-Once connected, the display should begin showing:
-
-- current track title
-- artist
-- album artwork
-- playback position
-- system volume
-- current time
+Once connected, the display should begin showing media information, album artwork, playback position, system volume, and the current time.
 
 ## 4. Controls
 
 ### Rotary Encoder
 
-- Rotate → change Windows volume
-- Single press → play/pause
-- Double press → mute/unmute Windows audio
+- Rotate — change Windows volume
+- Single press — play/pause
+- Double press — mute/unmute Windows audio
 
 ### Touchscreen
 
-Use the on-screen controls for media playback, seeking, and other available functions.
+- Play/pause
+- Previous/next track
+- Seeking
+- Supported Discord voice controls
 
 ## 5. Optional Discord Integration
 
-Discord integration can be enabled from the desktop companion's system tray menu.
+Enable **Discord Integration** from the companion's system-tray menu and enter your Discord application credentials when prompted.
 
-When enabled for the first time, you will be prompted for your Discord application credentials.
+Discord must be running locally.
 
-Discord integration provides:
+For Discord application setup, see the **Discord Setup** section in the main README.
 
-- current voice channel
-- voice-channel members
-- user avatars
-- mute/deafen state
-- Discord voice controls
-
-Discord must be running on the PC.
-
-## 6. Troubleshooting
+## Troubleshooting
 
 ### Display is not connecting
 
-- Make sure the ESP32 is connected by USB.
-- Restart the Windows companion.
+- Confirm the ESP32 is connected over USB.
+- Close any other program using the ESP32 serial port.
+- Restart the desktop companion.
 - Disconnect and reconnect the ESP32.
-- Make sure no other application is using the ESP32 serial port.
 
 ### Display connects but does not update
 
 Restart the desktop companion and reconnect the display.
 
-### Album artwork does not update immediately
+### Album artwork is stale
 
-Windows media applications occasionally provide stale or delayed thumbnail data. The companion retries artwork retrieval several times when a new track is detected, but some applications may still provide stale artwork.
+Some Windows media applications provide delayed thumbnail data. The companion retries artwork retrieval several times when a new track is detected, but stale artwork can still occur.
 
-### Discord information is not appearing
+### Discord information is missing
 
 - Confirm Discord is running.
 - Confirm Discord integration is enabled.
-- Verify your Discord application credentials.
-- First time setup? Restart the Media Software.
+- Verify the Discord application credentials.
+- Restart the desktop companion after first-time setup.
